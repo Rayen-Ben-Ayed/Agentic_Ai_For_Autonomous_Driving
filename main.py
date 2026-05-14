@@ -1,8 +1,14 @@
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Repo .env (not cwd): find_dotenv() can miss when the shell cwd is not this project.
+_PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(_PROJECT_ROOT / ".env")
+
 import time
 import logging
 import os
 import argparse
-from dotenv import load_dotenv, find_dotenv
 
 from simulation.carla_client import CarlaClient
 from simulation.world_state import WorldStateExtractor
@@ -21,8 +27,6 @@ def main():
     parser.add_argument('--scenario', type=str, default='1', help='Scenario number to run (e.g., 1)')
     args = parser.parse_args()
 
-    load_dotenv(find_dotenv())
-    
     # Configuration
     CARLA_HOST = os.getenv("CARLA_HOST", "127.0.0.1")
     CARLA_PORT = int(os.getenv("CARLA_PORT", 2000))

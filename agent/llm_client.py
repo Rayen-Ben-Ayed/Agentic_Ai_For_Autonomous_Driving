@@ -25,7 +25,8 @@ class LLMClient:
                 base_url="https://api.groq.com/openai/v1",
                 api_key=api_key
             )
-            self.model = "llama-3.3-70b-versatile" # Updated model
+            #self.model = "llama-3.3-70b-versatile" # Updated model
+            self.model = "llama3.1-8b" # Updated model
             
         elif self.provider == "cerebras":
             api_key = os.environ.get("CEREBRAS_API_KEY")
@@ -35,7 +36,7 @@ class LLMClient:
                 base_url="https://api.cerebras.ai/v1",
                 api_key=api_key
             )
-            self.model = "llama3.1-70b" # Example model
+            self.model = "llama3.1-8b" # Updated model
             
         elif self.provider == "ollama":
             # Ollama provides an OpenAI compatible endpoint locally

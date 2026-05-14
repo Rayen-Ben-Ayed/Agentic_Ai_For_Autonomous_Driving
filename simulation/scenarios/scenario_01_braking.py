@@ -19,7 +19,8 @@ class Scenario01Braking(BaseScenario):
         
         # Calculate a point 20 meters ahead of the ego vehicle
         forward_vector = ego_transform.get_forward_vector()
-        spawn_location = ego_transform.location + (forward_vector * 20.0)
+        spawn_location = ego_transform.location + (forward_vector * 50.0)
+        spawn_location.z += 0.5  # Elevate slightly to prevent ground collision
         spawn_transform = carla.Transform(spawn_location, ego_transform.rotation)
 
         # Spawn the NPC vehicle

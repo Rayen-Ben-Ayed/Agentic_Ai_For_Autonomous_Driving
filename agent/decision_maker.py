@@ -48,10 +48,9 @@ class DecisionMaker:
         """
         Runs the decision loop for a single step.
         """
-        # We don't send a user text prompt anymore. 
-        # We just trigger the LLM to process the system prompt and call tools.
-        # Some LLM APIs require at least one user message, so we send a single space.
-        self.messages.append({"role": "user", "content": " "})
+        # Reset messages for each decision to avoid hallucinating based on long history
+        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.messages.append({"role": "user", "content": "Analyze the current world state and execute the next action."})
 
         # Loop to handle tool calls
         max_iterations = 5

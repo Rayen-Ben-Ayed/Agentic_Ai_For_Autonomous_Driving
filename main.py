@@ -81,19 +81,13 @@ def main():
         # Get current state
         state = world_state.get_state()
         
-        # Check if the scenario event has triggered
-        if scenario.is_llm_needed(state):
-            logger.info("CRITICAL EVENT DETECTED! Querying LLM...")
-            evaluator.metrics.start_decision_timer()
-            
-            action = decision_maker.make_decision()
-            
-            latency = evaluator.metrics.end_decision_timer()
-            logger.info(f"Decision latency: {latency:.2f} ms")
-        else:
-            # Default behavior when nothing is happening
-            logger.info("Driving normally (default action)...")
-            action_executor.execute_action("follow_lane")
+        logger.info("Querying LLM for decision...")
+        evaluator.metrics.start_decision_timer()
+        
+        action = decision_maker.make_decision()
+        
+        latency = evaluator.metrics.end_decision_timer()
+        logger.info(f"Decision latency: {latency:.2f} ms")
             
         # Update spectator camera to follow the car
         if carla_client.get_ego_vehicle():
@@ -101,7 +95,8 @@ def main():
             transform = carla_client.get_ego_vehicle().get_transform()
             # Position camera 10 meters behind and 5 meters above the car
             import carla
-            camera_loc = transform.location + carla.Location(x=-10, z=5)
+            forward_vector = transform.get_forward_vector()
+            camera_loc = transform.location - (forward_vector * 10) + carla.Location(z=5)
             # Rotate camera to look slightly down
             camera_rot = carla.Rotation(pitch=-15, yaw=transform.rotation.yaw)
             spectator.set_transform(carla.Transform(camera_loc, camera_rot))

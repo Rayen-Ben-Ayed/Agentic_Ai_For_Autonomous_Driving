@@ -1,0 +1,14 @@
+# Simulation
+carla
+
+# MCP
+mcp
+
+# LLM Clients
+groq
+openai # For Cerebras (OpenAI compatible)
+ollama
+
+# Utilities
+pydantic
+python-dotenv

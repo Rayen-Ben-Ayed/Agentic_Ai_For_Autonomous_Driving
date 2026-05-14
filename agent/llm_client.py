@@ -1,9 +1,10 @@
 import os
 import logging
+from pathlib import Path
 from openai import OpenAI
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 
-load_dotenv(find_dotenv())
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 logger = logging.getLogger(__name__)
 

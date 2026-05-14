@@ -32,5 +32,5 @@ agentic-driving/
 3. **Install Dependencies**: `pip install -r requirements.txt`
 4. **Run a Scenario**: Execute the main script with the desired scenario number:
    ```bash
-   python Agentic_Ai_For_Autonomous_Driving/main.py --scenario 1
+   python Agentic_Ai_For_Autonomous_Driving/main.py --scenario 1 
    ```

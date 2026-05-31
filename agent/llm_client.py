@@ -25,8 +25,8 @@ class LLMClient:
                 base_url="https://api.groq.com/openai/v1",
                 api_key=api_key
             )
-            #self.model = "llama-3.3-70b-versatile" # Updated model
-            self.model = "llama3.1-8b" # Updated model
+            self.model = "llama-3.3-70b-versatile" # Updated model
+            #self.model = "llama3.1-8b" # Updated model
             
         elif self.provider == "cerebras":
             api_key = os.environ.get("CEREBRAS_API_KEY")
@@ -44,7 +44,7 @@ class LLMClient:
                 base_url="http://localhost:11434/v1",
                 api_key="ollama" # required but ignored
             )
-            self.model = "llama3" # Example local model
+            self.model = "llama3.2:1b" # Example local model
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
 

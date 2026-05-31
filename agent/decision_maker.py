@@ -1,62 +1,77 @@
 import json
 import logging
-from agent.prompt_templates import SYSTEM_PROMPT, get_decision_prompt
+
+from agent.prompt_templates import SYSTEM_PROMPT
+from simulation.agent_tools import execute_action, get_world_state
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_tool_arguments(raw) -> dict:
+    if raw is None or raw == "":
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
 class DecisionMaker:
-    def __init__(self, llm_client, mcp_server):
+    def __init__(self, llm_client, mcp_server=None, system_prompt: str | None = None):
         self.llm_client = llm_client
         self.mcp_server = mcp_server
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        
-        # Define tools for the LLM
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
+        self.messages = [{"role": "system", "content": self.system_prompt}]
+
         self.tools = [
             {
                 "type": "function",
                 "function": {
                     "name": "get_world_state",
-                    "description": "Retrieves the current world state from the CARLA simulation in JSON format.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
+                    "description": "Retrieves the current world state from the Phabmacs simulation in JSON format.",
+                    "parameters": {"type": "object", "properties": {}, "required": []},
+                },
             },
             {
                 "type": "function",
                 "function": {
                     "name": "execute_action",
-                    "description": "Executes a discrete driving action in the CARLA simulation.",
+                    "description": "Executes a discrete driving action in the Phabmacs simulation.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "action": {
                                 "type": "string",
-                                "enum": ["overtake", "follow_lane", "stop", "yield", "change_lane_left", "change_lane_right"],
-                                "description": "The action to execute."
+                                "enum": [
+                                    "overtake",
+                                    "follow_lane",
+                                    "stop",
+                                    "yield",
+                                    "change_lane_left",
+                                    "change_lane_right",
+                                ],
+                                "description": "The action to execute.",
                             }
                         },
-                        "required": ["action"]
-                    }
-                }
-            }
+                        "required": ["action"],
+                    },
+                },
+            },
         ]
 
-    def make_decision(self):
-        """
-        Runs the decision loop for a single step.
-        """
-        # Reset messages for each decision to avoid hallucinating based on long history
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        self.messages.append({"role": "user", "content": "Analyze the current world state and execute the next action."})
+    def make_decision(self, user_message: str | None = None):
+        self.messages = [{"role": "system", "content": self.system_prompt}]
+        self.messages.append({
+            "role": "user",
+            "content": user_message or "Analyze the current world state and execute the next action.",
+        })
 
-        # Loop to handle tool calls
         max_iterations = 5
         for _ in range(max_iterations):
             response_message = self.llm_client.generate_response(self.messages, tools=self.tools)
-            
+
             if not response_message:
                 logger.error("No response from LLM.")
                 break
@@ -66,20 +81,14 @@ class DecisionMaker:
             if response_message.tool_calls:
                 for tool_call in response_message.tool_calls:
                     function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
-                    
-                    logger.info(f"LLM called tool: {function_name} with args: {function_args}")
-                    
-                    # Execute the tool via the MCP server (simulated direct call here for skeleton)
-                    # In a full MCP setup, this would be an MCP client request
+                    function_args = _parse_tool_arguments(tool_call.function.arguments)
+
+                    logger.info("LLM called tool: %s with args: %s", function_name, function_args)
+
                     if function_name == "get_world_state":
-                        # We call the underlying function registered in FastMCP
-                        # For the skeleton, we can import the function directly or use the FastMCP instance
-                        from mcp_interface.server import get_world_state
                         result = get_world_state()
                     elif function_name == "execute_action":
-                        from mcp_interface.server import execute_action
-                        result = execute_action(function_args.get("action"))
+                        result = execute_action(function_args.get("action", ""))
                     else:
                         result = json.dumps({"error": f"Unknown tool: {function_name}"})
 
@@ -89,13 +98,11 @@ class DecisionMaker:
                         "name": function_name,
                         "content": result,
                     })
-                    
-                    # If action was executed, we can consider the decision step complete
+
                     if function_name == "execute_action":
                         return function_args.get("action")
             else:
-                # No tool calls, LLM just responded with text
-                logger.info(f"LLM response: {response_message.content}")
+                logger.info("LLM response (no tool call): %s", response_message.content)
                 break
-                
+
         return None

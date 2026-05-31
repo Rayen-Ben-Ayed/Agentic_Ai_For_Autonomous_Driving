@@ -1,12 +1,12 @@
-# Simulation
-carla
+# Simulation bridge (HTTP client to Phabmacs AgentAppSim)
+requests
 
 # MCP (PyPI package requires Python >= 3.10)
 mcp>=1.0; python_version >= "3.10"
 
 # LLM Clients
 groq
-openai # For Cerebras (OpenAI compatible)
+openai  # For Cerebras (OpenAI-compatible) and Groq (OpenAI-compatible)
 ollama
 
 # Utilities

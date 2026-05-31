@@ -1,65 +1,63 @@
-import math
+"""World state extractor for the Phabmacs bridge.
+
+The bridge already returns JSON shaped almost like the structure expected by the
+LLM prompt, so this class is a thin pass-through with a small reshaping for
+backwards compatibility with the CARLA-era schema.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
+
 
 class WorldStateExtractor:
-    def __init__(self, carla_client):
-        self.carla_client = carla_client
+    def __init__(self, bridge):
+        self.bridge = bridge
 
-    def get_state(self):
-        """
-        Extracts the current world state relevant for decision making.
-        Returns a dictionary representing the state.
-        """
-        world = self.carla_client.get_world()
-        ego_vehicle = self.carla_client.get_ego_vehicle()
+    def get_state(self) -> Dict[str, Any]:
+        raw = self.bridge.get_state()
+        if "error" in raw:
+            return raw
 
-        if not world or not ego_vehicle:
-            return {"error": "World or ego vehicle not initialized"}
+        ego = raw.get("ego_vehicle", {})
+        loc = ego.get("location", {})
+        head = ego.get("heading", {})
+        front = raw.get("front_vehicle")
+        surr = raw.get("surroundings", {})
 
-        ego_transform = ego_vehicle.get_transform()
-        ego_velocity = ego_vehicle.get_velocity()
-        ego_speed = math.sqrt(ego_velocity.x**2 + ego_velocity.y**2 + ego_velocity.z**2)
-
-        # Get nearby actors (vehicles and pedestrians)
-        actors = world.get_actors()
-        vehicles = actors.filter('vehicle.*')
-        pedestrians = actors.filter('walker.*')
-
-        nearby_actors = []
-        for actor in list(vehicles) + list(pedestrians):
-            if actor.id == ego_vehicle.id:
-                continue
-            
-            actor_transform = actor.get_transform()
-            distance = ego_transform.location.distance(actor_transform.location)
-            
-            # Only consider actors within 50 meters
-            if distance < 50.0:
-                actor_velocity = actor.get_velocity()
-                actor_speed = math.sqrt(actor_velocity.x**2 + actor_velocity.y**2 + actor_velocity.z**2)
-                
-                nearby_actors.append({
-                    "id": actor.id,
-                    "type": actor.type_id,
-                    "distance": round(distance, 2),
-                    "speed": round(actor_speed, 2),
-                    "location": {
-                        "x": round(actor_transform.location.x, 2),
-                        "y": round(actor_transform.location.y, 2)
-                    }
+        nearby = []
+        if isinstance(front, dict):
+            nearby.append({
+                "id": "front",
+                "type": "vehicle",
+                "distance": front.get("distance"),
+                "speed": front.get("speed"),
+                "position": "FRONT",
+            })
+        for pos_name, present in surr.items():
+            if present and pos_name != "FRONT":
+                nearby.append({
+                    "id": pos_name.lower(),
+                    "type": "vehicle",
+                    "position": pos_name,
                 })
 
-        state = {
+        return {
+            "scenario": raw.get("scenario", "default"),
+            "scenario_hint": raw.get("scenario_hint"),
+            "traffic": raw.get("traffic", {}),
             "ego_vehicle": {
-                "speed": round(ego_speed, 2),
-                "location": {
-                    "x": round(ego_transform.location.x, 2),
-                    "y": round(ego_transform.location.y, 2)
-                },
-                "rotation": {
-                    "yaw": round(ego_transform.rotation.yaw, 2)
-                }
+                "speed": ego.get("speed"),
+                "location": loc,
+                "heading": head,
+                "lane_change_in_progress": ego.get("lane_change_in_progress", False),
             },
-            "nearby_actors": nearby_actors
+            "front_vehicle": raw.get("front_vehicle"),
+            "surroundings": surr,
+            "nearby_actors": nearby,
+            "collisions": raw.get("collisions", 0),
+            "current_action": raw.get("current_action"),
         }
-
-        return state

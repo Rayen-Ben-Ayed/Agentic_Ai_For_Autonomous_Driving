@@ -1,0 +1,53 @@
+# Environments & secrets
+.env
+.env.*
+
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.virtualenv/
+
+# Python bytecode & caches (any subdir: agent/, simulation/, …)
+**/__pycache__/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Packaging / tooling
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Evaluation results
+evaluation_results.json
+
+# Run logs
+logs/
+*.log
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+.env
+__pycache__/
+*.pyc
+evaluation_results.json

@@ -28,6 +28,21 @@ def summarize_world_state(state: dict, max_actors: int = 3) -> str:
         f"L_clear={state.get('left_lane_clear')}",
         f"R_clear={state.get('right_lane_clear')}",
         f"actors={len(state.get('nearby_actors', []))}",
+        *(
+            [f"lead={state['lead_vehicle']['distance_m']}m stat={state['lead_vehicle']['is_stationary']}"]
+            if state.get("lead_vehicle")
+            else []
+        ),
+        *(
+            [f"ttc={state['decision_hints']['time_to_contact_s']}s"]
+            if (state.get("decision_hints") or {}).get("time_to_contact_s") is not None
+            else []
+        ),
+        *(
+            [f"allowed={','.join(state.get('allowed_actions', []))}"]
+            if state.get("allowed_actions")
+            else []
+        ),
     ]
     for actor in (state.get("nearby_actors") or [])[:max_actors]:
         ef = actor.get("ego_frame") or {}

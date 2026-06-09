@@ -7,7 +7,10 @@ import logging
 from pipeline_log import log_stage, summarize_world_state
 from simulation import step_context
 from simulation.maneuver_policy import (
-    allowed_actions_when_stuck,
+    LATERAL_ACTIONS,
+    PROACTIVE_ACTIONS,
+    compute_allowed_actions,
+    is_action_allowed,
     is_stuck_mode,
 )
 
@@ -19,14 +22,6 @@ DrivingAction = Literal[
     "change_lane_left",
     "change_lane_right",
 ]
-
-LATERAL_ACTIONS = frozenset({
-    "overtake",
-    "change_lane_left",
-    "change_lane_right",
-})
-
-PROACTIVE_ACTIONS = LATERAL_ACTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +77,7 @@ def _annotate_runtime_status(state: dict) -> dict:
     stuck = is_stuck_mode(ego_speed, collisions)
     state["collisions_this_step"] = collisions
     state["stuck"] = stuck
-    if stuck:
-        state["allowed_actions"] = sorted(allowed_actions_when_stuck())
+    state["allowed_actions"] = compute_allowed_actions(state, stuck=stuck)
     return state
 
 
@@ -93,30 +87,26 @@ def _validate_action(action: str, state: dict) -> str | None:
 
     ego_speed = _live_ego_speed()
     stuck = is_stuck_mode(ego_speed, step_context.collisions_this_step())
-    if stuck and action not in allowed_actions_when_stuck():
+    closest = state.get("effective_closest_distance") or state.get("closest_ahead_distance")
+
+    if is_action_allowed(action, state, stuck=stuck):
+        return None
+
+    if stuck:
         return _reject_action(
             action,
             "Vehicle stuck after contact. Use stop or yield only.",
             state,
         )
 
-    closest = state.get("effective_closest_distance") or state.get("closest_ahead_distance")
+    if action == "follow_lane" and state.get("too_close_for_follow_lane"):
+        return _reject_action(
+            action,
+            f"Too close ({closest}m) to continue with throttle. Use yield or stop.",
+            state,
+        )
+
     path_blocked = state.get("path_blocked", False)
-
-    if action == "follow_lane":
-        if stuck:
-            return _reject_action(
-                action,
-                "Vehicle stuck after contact. Use stop or yield.",
-                state,
-            )
-        if state.get("too_close_for_follow_lane"):
-            return _reject_action(
-                action,
-                f"Too close ({closest}m) to continue with throttle. Use yield or stop.",
-                state,
-            )
-
     if action in PROACTIVE_ACTIONS:
         if not path_blocked:
             return _reject_action(
@@ -142,12 +132,11 @@ def _validate_action(action: str, state: dict) -> str | None:
                 f"Too close for lateral move ({closest}m). Use yield or stop.",
                 state,
             )
-        if not state.get("maneuver_allowed"):
-            return _reject_action(
-                action,
-                "Lateral maneuver not allowed for current distance/speed.",
-                state,
-            )
+        return _reject_action(
+            action,
+            "Lateral maneuver not allowed for current distance/speed.",
+            state,
+        )
 
     if action == "change_lane_left" and not state.get("left_lane_clear"):
         return _reject_action(action, "left_lane_clear is false.", state)
@@ -158,7 +147,7 @@ def _validate_action(action: str, state: dict) -> str | None:
     ):
         return _reject_action(action, "Both adjacent lanes blocked.", state)
 
-    return None
+    return _reject_action(action, "Action not allowed in current state.", state)
 
 
 def init_mcp_server(client, world_state, action_executor):

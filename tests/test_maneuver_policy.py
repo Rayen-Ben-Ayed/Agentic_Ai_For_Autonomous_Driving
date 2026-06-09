@@ -3,6 +3,7 @@ from simulation.maneuver_policy import (
     STEP_INTERVAL_S,
     MIN_PLANNING_SPEED_MPS,
     STUCK_COLLISION_DELTA,
+    compute_allowed_actions,
     compute_maneuver_horizon_m,
     evaluate_maneuver_policy,
     is_stuck_mode,
@@ -58,3 +59,18 @@ def test_horizon_formula_at_speed():
         40.0,
     )
     assert compute_maneuver_horizon_m(speed) == expected
+
+
+def test_allowed_actions_excludes_follow_lane_when_too_close():
+    state = {
+        "path_blocked": True,
+        "maneuver_allowed": True,
+        "lane_change_allowed": True,
+        "left_lane_clear": True,
+        "right_lane_clear": True,
+        "too_close_for_follow_lane": True,
+    }
+    allowed = compute_allowed_actions(state)
+    assert "follow_lane" not in allowed
+    assert "yield" in allowed
+    assert "stop" in allowed

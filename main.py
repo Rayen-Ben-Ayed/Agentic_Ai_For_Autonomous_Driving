@@ -14,6 +14,14 @@ from simulation.carla_client import CarlaClient
 from simulation.world_state import WorldStateExtractor
 from simulation.action_executor import ActionExecutor
 from simulation import step_context
+from simulation.timing_config import (
+    CARLA_FIXED_DELTA_S,
+    NUM_STEPS,
+    STEP_INTERVAL_S,
+    format_step_interval_s,
+    simulated_duration_s,
+    ticks_per_step,
+)
 from mcp_interface.server import init_mcp_server
 from mcp_interface.client import MCPDrivingClient
 from agent.llm_client import LLMClient
@@ -72,27 +80,28 @@ def main():
     carla_host = os.getenv("CARLA_HOST", "127.0.0.1")
     carla_port = int(os.getenv("CARLA_PORT", 2000))
     llm_provider = os.getenv("LLM_PROVIDER", "groq")
-    num_steps = int(os.getenv("NUM_STEPS", "10"))
-    step_interval_s = float(os.getenv("STEP_INTERVAL_S", "1.0"))
-    fixed_delta_s = float(os.getenv("CARLA_FIXED_DELTA_S", "0.05"))
-    ticks_per_step = max(1, round(step_interval_s / fixed_delta_s))
+    num_steps = NUM_STEPS
+    step_ticks = ticks_per_step()
     verbose_state = args.log_level.upper() == "DEBUG"
 
     log_stage(
         logger,
         "init",
-        "CARLA %s:%s scenario=%s llm=%s steps=%d",
+        "CARLA %s:%s scenario=%s llm=%s steps=%d step=%ss ticks/step=%d sim_duration=%ss",
         carla_host,
         carla_port,
         args.scenario,
         llm_provider,
         num_steps,
+        format_step_interval_s(),
+        step_ticks,
+        int(simulated_duration_s(num_steps)),
     )
 
     carla_client = CarlaClient(host=carla_host, port=carla_port)
     try:
         carla_client.connect()
-        carla_client.enable_synchronous_mode(fixed_delta_seconds=fixed_delta_s)
+        carla_client.enable_synchronous_mode(fixed_delta_seconds=CARLA_FIXED_DELTA_S)
         carla_client.spawn_ego_vehicle()
         carla_client.tick()
     except Exception as e:
@@ -193,10 +202,10 @@ def main():
             # is the ONLY thing that moves the world, so a slow LLM decision can
             # no longer translate into uncontrolled travel between steps.
             if carla_client.is_synchronous():
-                for _ in range(ticks_per_step):
+                for _ in range(step_ticks):
                     carla_client.tick()
             else:
-                time.sleep(step_interval_s)
+                time.sleep(STEP_INTERVAL_S)
     finally:
         # Always run teardown so synchronous mode is restored on the server even
         # if the loop raises; otherwise CARLA stays frozen for other clients.

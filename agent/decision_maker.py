@@ -3,9 +3,10 @@ import json
 import logging
 from typing import Any, Optional
 
-from agent.prompt_templates import SYSTEM_PROMPT, get_decision_prompt
+from agent.prompt_templates import get_decision_prompt, get_system_prompt
 from mcp_interface.client import MCPDrivingClient
 from pipeline_log import log_stage
+from simulation.timing_config import MAX_LLM_TOOL_ROUNDS
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,6 @@ VALID_ACTIONS = frozenset({
     "change_lane_left",
     "change_lane_right",
 })
-
-MAX_TOOL_ROUNDS = 6
 
 # After this many rejected actions in one step, stop deliberating and force a
 # safe stop instead of burning more (slow) LLM rounds on the same dead end.
@@ -58,15 +57,17 @@ class DecisionMaker:
     async def _run_step_async(self) -> Optional[str]:
         tools = await self.mcp_client.get_openai_tools()
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt()},
             {"role": "user", "content": get_decision_prompt()},
         ]
 
         executed_action: Optional[str] = None
         rejection_count = 0
 
-        for round_idx in range(1, MAX_TOOL_ROUNDS + 1):
-            log_stage(logger, "agent", "LLM round %d/%d", round_idx, MAX_TOOL_ROUNDS)
+        for round_idx in range(1, MAX_LLM_TOOL_ROUNDS + 1):
+            log_stage(
+                logger, "agent", "LLM round %d/%d", round_idx, MAX_LLM_TOOL_ROUNDS
+            )
             response_message = self.llm_client.generate_response(messages, tools=tools)
             if not response_message:
                 return await self._force_safe_stop("LLM returned no response")

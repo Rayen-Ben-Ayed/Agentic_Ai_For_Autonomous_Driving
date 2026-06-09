@@ -1,8 +1,10 @@
 import math
 import os
 
+import carla
+
 from simulation import step_context
-from simulation.maneuver_policy import evaluate_maneuver_policy
+from simulation.maneuver_policy import compute_allowed_actions, evaluate_maneuver_policy
 
 _IN_LANE_LATERAL_M = 2.5
 _LEFT_LANE_RANGE = (-4.5, -1.2)
@@ -11,13 +13,168 @@ _BLOCKING_MAX_LONGITUDINAL_M = float(os.getenv("BLOCKING_VEHICLE_MAX_DIST_M", "1
 _BLOCKING_MAX_LATERAL_M = float(os.getenv("BLOCKING_VEHICLE_MAX_LATERAL_M", "12.0"))
 _SCENARIO_NPC_MAX_LONGITUDINAL_M = float(os.getenv("SCENARIO_NPC_MAX_DIST_M", "70.0"))
 _SCENARIO_NPC_MAX_LATERAL_M = float(os.getenv("SCENARIO_NPC_MAX_LATERAL_M", "6.0"))
+_DETECTION_RADIUS_M = float(os.getenv("DETECTION_RADIUS_M", "65.0"))
+_MAX_ACTORS = int(os.getenv("WORLD_STATE_MAX_ACTORS", "10"))
+_STATIONARY_SPEED_MPS = float(os.getenv("STATIONARY_SPEED_MPS", "0.5"))
 
 
 def _is_vehicle_actor(type_id: str) -> bool:
     return type_id.startswith("vehicle.")
 
 
-def _enrich_with_ego_frame(state: dict, ego_transform, ego_location, ego_speed_m_s: float) -> None:
+def _speed(velocity) -> float:
+    return math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2)
+
+
+def _ego_frame_offsets(ego_transform, location) -> tuple[float, float]:
+    forward = ego_transform.get_forward_vector()
+    right = ego_transform.get_right_vector()
+    rel_x = location.x - ego_transform.location.x
+    rel_y = location.y - ego_transform.location.y
+    longitudinal = rel_x * forward.x + rel_y * forward.y
+    lateral = rel_x * right.x + rel_y * right.y
+    return longitudinal, lateral
+
+
+def _closing_speed(ego_velocity, actor_velocity, ego_transform, actor_transform) -> float:
+    dx = actor_transform.location.x - ego_transform.location.x
+    dy = actor_transform.location.y - ego_transform.location.y
+    distance = math.sqrt(dx**2 + dy**2)
+    if distance < 0.001:
+        return 0.0
+    ux = dx / distance
+    uy = dy / distance
+    rvx = ego_velocity.x - actor_velocity.x
+    rvy = ego_velocity.y - actor_velocity.y
+    return rvx * ux + rvy * uy
+
+
+def _get_waypoint_info(carla_map, location) -> dict | None:
+    if carla_map is None:
+        return None
+
+    waypoint = carla_map.get_waypoint(
+        location,
+        project_to_road=True,
+        lane_type=carla.LaneType.Driving,
+    )
+    if waypoint is None:
+        return None
+
+    return {
+        "road_id": waypoint.road_id,
+        "lane_id": waypoint.lane_id,
+        "lane_type": str(waypoint.lane_type),
+        "is_junction": waypoint.is_junction,
+        "s": round(waypoint.s, 2),
+    }
+
+
+def _lane_relation(ego_wp_info: dict | None, actor_wp_info: dict | None) -> dict:
+    if ego_wp_info is None or actor_wp_info is None:
+        return {
+            "same_road": False,
+            "same_lane": False,
+            "lane_relation": "unknown",
+        }
+
+    same_road = ego_wp_info["road_id"] == actor_wp_info["road_id"]
+    same_lane = same_road and ego_wp_info["lane_id"] == actor_wp_info["lane_id"]
+
+    if not same_road:
+        lane_relation = "different_road"
+    elif same_lane:
+        lane_relation = "same_lane"
+    else:
+        lane_relation = "neighbor_lane"
+
+    return {
+        "same_road": same_road,
+        "same_lane": same_lane,
+        "lane_relation": lane_relation,
+    }
+
+
+def _ego_adjacent_lanes(carla_map, location) -> tuple[dict | None, bool, bool]:
+    if carla_map is None:
+        return None, False, False
+
+    waypoint = carla_map.get_waypoint(
+        location,
+        project_to_road=True,
+        lane_type=carla.LaneType.Driving,
+    )
+    if waypoint is None:
+        return None, False, False
+
+    left = waypoint.get_left_lane()
+    right = waypoint.get_right_lane()
+    left_available = left is not None and left.lane_type == carla.LaneType.Driving
+    right_available = right is not None and right.lane_type == carla.LaneType.Driving
+    return _get_waypoint_info(carla_map, location), left_available, right_available
+
+
+def _time_to_contact_s(distance_m: float, closing_speed_mps: float) -> float | None:
+    if closing_speed_mps <= 0.1:
+        return None
+    return round(distance_m / closing_speed_mps, 2)
+
+
+def _build_lead_vehicle(actors: list[dict]) -> dict | None:
+    """Closest in-lane vehicle ahead (scenario NPC preferred on ties)."""
+    candidates: list[dict] = []
+    for actor in actors:
+        if not _is_vehicle_actor(actor.get("type", "")):
+            continue
+        ef = actor.get("ego_frame") or {}
+        longitudinal = ef.get("longitudinal_m")
+        lateral = ef.get("lateral_m")
+        if longitudinal is None or lateral is None:
+            continue
+        in_lane = abs(lateral) <= _IN_LANE_LATERAL_M or actor.get("same_lane")
+        if not in_lane or longitudinal <= 0:
+            continue
+        candidates.append(actor)
+
+    if not candidates:
+        return None
+
+    candidates.sort(
+        key=lambda actor: (
+            0 if actor.get("is_scenario_npc") else 1,
+            actor["ego_frame"]["longitudinal_m"],
+        )
+    )
+    lead = candidates[0]
+    ef = lead["ego_frame"]
+    distance_m = ef["longitudinal_m"]
+    closing = lead.get("closing_speed", 0.0)
+    speed = lead.get("speed", 0.0)
+    is_stationary = speed < _STATIONARY_SPEED_MPS
+
+    return {
+        "id": lead["id"],
+        "type": lead["type"],
+        "distance_m": round(distance_m, 2),
+        "speed_mps": speed,
+        "is_stationary": is_stationary,
+        "in_ego_lane": abs(ef["lateral_m"]) <= _IN_LANE_LATERAL_M or lead.get("same_lane"),
+        "is_scenario_npc": lead.get("is_scenario_npc", False),
+        "closing_speed_mps": closing,
+        "time_to_contact_s": _time_to_contact_s(distance_m, closing),
+        "ego_frame": ef,
+    }
+
+
+def _enrich_with_ego_frame(
+    state: dict,
+    ego_transform,
+    ego_location,
+    ego_speed_m_s: float,
+    *,
+    left_lane_available: bool,
+    right_lane_available: bool,
+) -> None:
     forward = ego_transform.get_forward_vector()
     right = ego_transform.get_right_vector()
 
@@ -43,6 +200,7 @@ def _enrich_with_ego_frame(state: dict, ego_transform, ego_location, ego_speed_m
             "lateral_m": round(lateral, 2),
         }
         actor["is_scenario_npc"] = actor.get("id") in scenario_ids
+        actor["is_stationary"] = actor.get("speed", 0.0) < _STATIONARY_SPEED_MPS
 
         if actor["is_scenario_npc"]:
             in_lane_ahead = (
@@ -82,6 +240,8 @@ def _enrich_with_ego_frame(state: dict, ego_transform, ego_location, ego_speed_m
         if ahead_band and in_right_lane:
             right_blocked = True
 
+    state["left_lane_available"] = left_lane_available
+    state["right_lane_available"] = right_lane_available
     state["obstacle_ahead"] = obstacle_ahead
     state["closest_ahead_distance"] = (
         round(closest_ahead, 2) if closest_ahead is not None else None
@@ -94,8 +254,8 @@ def _enrich_with_ego_frame(state: dict, ego_transform, ego_location, ego_speed_m
     state["closest_blocking_distance"] = (
         round(closest_blocking, 2) if closest_blocking is not None else None
     )
-    state["left_lane_clear"] = not left_blocked
-    state["right_lane_clear"] = not right_blocked
+    state["left_lane_clear"] = left_lane_available and not left_blocked
+    state["right_lane_clear"] = right_lane_available and not right_blocked
 
     maneuver_obstacle = obstacle_ahead or scenario_obstacle_ahead
     maneuver_closest = closest_scenario if closest_scenario is not None else closest_ahead
@@ -109,10 +269,52 @@ def _enrich_with_ego_frame(state: dict, ego_transform, ego_location, ego_speed_m
     )
     state.update(policy)
 
+    lead_vehicle = _build_lead_vehicle(state.get("nearby_actors", []))
+    state["lead_vehicle"] = lead_vehicle
+
+    state["decision_hints"] = {
+        "too_close_for_follow_lane": state.get("too_close_for_follow_lane"),
+        "prefer_yield_or_stop": state.get("prefer_yield_or_stop"),
+        "follow_safe_distance_m": state.get("follow_safe_distance_m"),
+        "lead_vehicle_stationary": (
+            lead_vehicle.get("is_stationary") if lead_vehicle else False
+        ),
+        "time_to_contact_s": (
+            lead_vehicle.get("time_to_contact_s") if lead_vehicle else None
+        ),
+    }
+
+    state["allowed_actions"] = compute_allowed_actions(state, stuck=False)
+
+    state["summary"] = {
+        "num_nearby_actors": len(state.get("nearby_actors", [])),
+        "detection_radius_m": state.get("detection_radius_m"),
+        "closest_actor_distance": (
+            state["nearby_actors"][0]["distance"]
+            if state.get("nearby_actors")
+            else None
+        ),
+        "lead_vehicle_distance_m": (
+            lead_vehicle.get("distance_m") if lead_vehicle else None
+        ),
+        "lead_vehicle_stationary": (
+            lead_vehicle.get("is_stationary") if lead_vehicle else None
+        ),
+    }
+
 
 class WorldStateExtractor:
-    def __init__(self, carla_client):
+    def __init__(
+        self,
+        carla_client,
+        detection_radius: float | None = None,
+        max_actors: int | None = None,
+    ):
         self.carla_client = carla_client
+        self.detection_radius = (
+            detection_radius if detection_radius is not None else _DETECTION_RADIUS_M
+        )
+        self.max_actors = max_actors if max_actors is not None else _MAX_ACTORS
 
     def get_state(self):
         world = self.carla_client.get_world()
@@ -121,9 +323,14 @@ class WorldStateExtractor:
         if not world or not ego_vehicle:
             return {"error": "World or ego vehicle not initialized"}
 
+        carla_map = world.get_map()
         ego_transform = ego_vehicle.get_transform()
         ego_velocity = ego_vehicle.get_velocity()
-        ego_speed = math.sqrt(ego_velocity.x**2 + ego_velocity.y**2 + ego_velocity.z**2)
+        ego_speed = _speed(ego_velocity)
+
+        ego_wp_info, left_lane_available, right_lane_available = _ego_adjacent_lanes(
+            carla_map, ego_transform.location
+        )
 
         actors = world.get_actors()
         vehicles = actors.filter("vehicle.*")
@@ -135,38 +342,73 @@ class WorldStateExtractor:
                 continue
 
             actor_transform = actor.get_transform()
+            actor_velocity = actor.get_velocity()
             distance = ego_transform.location.distance(actor_transform.location)
 
-            if distance < 50.0:
-                actor_velocity = actor.get_velocity()
-                actor_speed = math.sqrt(
-                    actor_velocity.x**2 + actor_velocity.y**2 + actor_velocity.z**2
-                )
+            if distance > self.detection_radius:
+                continue
 
-                nearby_actors.append({
-                    "id": actor.id,
-                    "type": actor.type_id,
-                    "distance": round(distance, 2),
-                    "speed": round(actor_speed, 2),
-                    "location": {
-                        "x": round(actor_transform.location.x, 2),
-                        "y": round(actor_transform.location.y, 2),
-                    },
-                })
+            actor_speed = _speed(actor_velocity)
+            actor_wp_info = _get_waypoint_info(carla_map, actor_transform.location)
+            lane_info = _lane_relation(ego_wp_info, actor_wp_info)
+            closing_speed = _closing_speed(
+                ego_velocity,
+                actor_velocity,
+                ego_transform,
+                actor_transform,
+            )
+
+            nearby_actors.append({
+                "id": actor.id,
+                "type": actor.type_id,
+                "distance": round(distance, 2),
+                "speed": round(actor_speed, 2),
+                "is_stationary": actor_speed < _STATIONARY_SPEED_MPS,
+                "closing_speed": round(closing_speed, 2),
+                "same_road": lane_info["same_road"],
+                "same_lane": lane_info["same_lane"],
+                "lane_relation": lane_info["lane_relation"],
+                "location": {
+                    "x": round(actor_transform.location.x, 2),
+                    "y": round(actor_transform.location.y, 2),
+                    "z": round(actor_transform.location.z, 2),
+                },
+                "rotation": {
+                    "yaw": round(actor_transform.rotation.yaw, 2),
+                },
+                "waypoint": actor_wp_info,
+            })
+
+        nearby_actors.sort(key=lambda actor: actor["distance"])
+        nearby_actors = nearby_actors[: self.max_actors]
 
         state = {
+            "detection_radius_m": self.detection_radius,
             "ego_vehicle": {
+                "id": ego_vehicle.id,
+                "type": ego_vehicle.type_id,
                 "speed": round(ego_speed, 2),
                 "location": {
                     "x": round(ego_transform.location.x, 2),
                     "y": round(ego_transform.location.y, 2),
+                    "z": round(ego_transform.location.z, 2),
                 },
                 "rotation": {
                     "yaw": round(ego_transform.rotation.yaw, 2),
                 },
+                "waypoint": ego_wp_info,
+                "left_lane_available": left_lane_available,
+                "right_lane_available": right_lane_available,
             },
             "nearby_actors": nearby_actors,
         }
 
-        _enrich_with_ego_frame(state, ego_transform, ego_transform.location, ego_speed)
+        _enrich_with_ego_frame(
+            state,
+            ego_transform,
+            ego_transform.location,
+            ego_speed,
+            left_lane_available=left_lane_available,
+            right_lane_available=right_lane_available,
+        )
         return state

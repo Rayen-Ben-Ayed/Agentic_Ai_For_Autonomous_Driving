@@ -4,8 +4,7 @@ Speed- and latency-aware rules for when proactive maneuvers (lane change, overta
 import os
 from typing import Optional
 
-STEP_INTERVAL_S = float(os.getenv("STEP_INTERVAL_S", "1.0"))
-AGENT_LATENCY_S = float(os.getenv("AGENT_LATENCY_S", "5.5"))
+from simulation.timing_config import AGENT_LATENCY_S, STEP_INTERVAL_S
 SAFETY_MARGIN_M = float(os.getenv("MANEUVER_SAFETY_MARGIN_M", "5.0"))
 MAX_MANEUVER_TRIGGER_M = float(os.getenv("MAX_MANEUVER_TRIGGER_M", "40.0"))
 MIN_MANEUVER_HORIZON_M = float(os.getenv("MIN_MANEUVER_HORIZON_M", "12.0"))
@@ -21,6 +20,23 @@ STUCK_SPEED_MPS = float(os.getenv("STUCK_SPEED_MPS", "0.5"))
 
 # Contacts in one step before treating ego as stuck (avoids single sensor spikes)
 STUCK_COLLISION_DELTA = int(os.getenv("STUCK_COLLISION_DELTA", "5"))
+
+ALL_DRIVING_ACTIONS = (
+    "overtake",
+    "follow_lane",
+    "stop",
+    "yield",
+    "change_lane_left",
+    "change_lane_right",
+)
+
+LATERAL_ACTIONS = frozenset({
+    "overtake",
+    "change_lane_left",
+    "change_lane_right",
+})
+
+PROACTIVE_ACTIONS = LATERAL_ACTIONS
 
 
 def compute_maneuver_horizon_m(ego_speed_m_s: float) -> float:
@@ -95,3 +111,45 @@ def is_stuck_mode(ego_speed_m_s: float, collisions_this_step: int) -> bool:
 
 def allowed_actions_when_stuck() -> frozenset[str]:
     return frozenset({"stop", "yield"})
+
+
+def is_action_allowed(action: str, state: dict, *, stuck: bool = False) -> bool:
+    """Mirror MCP execute_action validation (positive form)."""
+    if state.get("error"):
+        return False
+
+    if stuck:
+        return action in allowed_actions_when_stuck()
+
+    path_blocked = state.get("path_blocked", False)
+
+    if action == "follow_lane" and state.get("too_close_for_follow_lane"):
+        return False
+
+    if action in PROACTIVE_ACTIONS:
+        if not path_blocked or not state.get("maneuver_allowed"):
+            return False
+
+    if action in LATERAL_ACTIONS and not state.get("lane_change_allowed"):
+        return False
+
+    if action == "change_lane_left" and not state.get("left_lane_clear"):
+        return False
+    if action == "change_lane_right" and not state.get("right_lane_clear"):
+        return False
+    if action == "overtake" and not (
+        state.get("left_lane_clear") or state.get("right_lane_clear")
+    ):
+        return False
+
+    return True
+
+
+def compute_allowed_actions(state: dict, *, stuck: bool = False) -> list[str]:
+    if stuck:
+        return sorted(allowed_actions_when_stuck())
+    return sorted(
+        action
+        for action in ALL_DRIVING_ACTIONS
+        if is_action_allowed(action, state, stuck=False)
+    )

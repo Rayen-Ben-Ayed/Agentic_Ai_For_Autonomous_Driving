@@ -10,7 +10,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(_PROJECT_ROOT / ".env")
 
 SUPPORTED_PROVIDERS = frozenset(
-    {"groq", "cerebras", "gemini", "ollama", "ollama-remote"}
+    {"groq", "cerebras", "gemini", "ollama", "ollama-remote", "rwth"}
 )
 
 # Per-provider model env var and default when unset.
@@ -20,6 +20,7 @@ PROVIDER_MODEL_ENV: dict[str, tuple[str, str]] = {
     "gemini": ("GEMINI_MODEL", "gemini-2.5-flash-lite"),
     "ollama": ("OLLAMA_MODEL", "llama3"),
     "ollama-remote": ("OLLAMA_REMOTE_MODEL", "llama3.1:8b"),
+    "rwth": ("RWTH_MODEL", "OpenAI GPT OSS 120B"),
 }
 
 PROVIDER_BASE_URL_ENV: dict[str, tuple[str, str]] = {
@@ -28,6 +29,7 @@ PROVIDER_BASE_URL_ENV: dict[str, tuple[str, str]] = {
         "OLLAMA_REMOTE_BASE_URL",
         "http://10.230.225.149:11434/v1",
     ),
+    "rwth": ("RWTH_BASE_URL", "https://chat.kiconnect.nrw/api/v1"),
 }
 
 
@@ -79,6 +81,13 @@ def resolve_ollama_base_url(provider: str) -> str:
 def model_env_key(provider: str) -> str:
     """Env var name that sets the model for this provider (for docs/logging)."""
     return PROVIDER_MODEL_ENV[provider.lower()][0]
+
+
+def resolve_provider_base_url(provider: str) -> str:
+    if provider not in PROVIDER_BASE_URL_ENV:
+        raise ValueError(f"No configurable base URL for provider: {provider}")
+    env_key, default = PROVIDER_BASE_URL_ENV[provider]
+    return (_strip(os.getenv(env_key)) or default).rstrip("/")
 
 
 def resolve_gemini_base_url() -> str:

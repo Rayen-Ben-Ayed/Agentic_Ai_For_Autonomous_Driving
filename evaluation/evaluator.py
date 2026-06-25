@@ -37,7 +37,19 @@ class Evaluator:
         actor_type = event.other_actor.type_id
         self.metrics.record_collision(actor_type)
         step_context.update_live_collision_count(self.metrics.collisions)
-        self.collision_log.record(actor_type)
+        detail = None
+        try:
+            loc = event.transform.location
+            impulse = event.normal_impulse
+            magnitude = (impulse.x**2 + impulse.y**2 + impulse.z**2) ** 0.5
+            detail = (
+                f"other_id={event.other_actor.id} "
+                f"at=({loc.x:.1f},{loc.y:.1f},{loc.z:.1f}) "
+                f"impulse={magnitude:.1f}"
+            )
+        except Exception:
+            detail = f"other_id={getattr(event.other_actor, 'id', '?')}"
+        self.collision_log.record(actor_type, detail=detail)
 
     def cleanup(self):
         self.collision_log.finalize()

@@ -8,6 +8,7 @@ _frozen_state: Optional[dict[str, Any]] = None
 _collisions_at_step_start: int = 0
 _live_collision_count: int = 0
 _scenario_npc_ids: frozenset[int] = frozenset()
+_previewed_actions: set[str] = set()
 
 
 def begin_step(collision_count: int, live_state: dict[str, Any]) -> None:
@@ -15,6 +16,7 @@ def begin_step(collision_count: int, live_state: dict[str, Any]) -> None:
     _collisions_at_step_start = collision_count
     _live_collision_count = collision_count
     _frozen_state = copy.deepcopy(live_state)
+    _previewed_actions.clear()
 
 
 def set_scenario_npc_ids(actor_ids: list[int]) -> None:
@@ -32,6 +34,16 @@ def clear() -> None:
     _collisions_at_step_start = 0
     _live_collision_count = 0
     _scenario_npc_ids = frozenset()
+    _previewed_actions.clear()
+
+
+def record_preview(action: str) -> None:
+    """Mark an action as previewed (cross-checked) during the current step."""
+    _previewed_actions.add(action)
+
+
+def was_previewed(action: str) -> bool:
+    return action in _previewed_actions
 
 
 def get_frozen_state() -> Optional[dict[str, Any]]:

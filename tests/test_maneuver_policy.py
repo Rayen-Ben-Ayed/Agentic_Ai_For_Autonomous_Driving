@@ -6,6 +6,7 @@ from simulation.maneuver_policy import (
     compute_allowed_actions,
     compute_maneuver_horizon_m,
     evaluate_maneuver_policy,
+    is_action_allowed,
     is_stuck_mode,
     allowed_actions_when_stuck,
 )
@@ -74,3 +75,62 @@ def test_allowed_actions_excludes_follow_lane_when_too_close():
     assert "follow_lane" not in allowed
     assert "yield" in allowed
     assert "stop" in allowed
+
+
+def test_preference_lane_change_allowed_when_path_clear():
+    state = {
+        "path_blocked": False,
+        "lane_preference_allowed": True,
+        "preferred_action": "change_lane_right",
+        "left_lane_clear": True,
+        "right_lane_clear": True,
+        "left_lane_available": True,
+        "right_lane_available": True,
+        "maneuver_allowed": False,
+        "lane_change_allowed": False,
+    }
+    assert is_action_allowed("change_lane_right", state)
+    allowed = compute_allowed_actions(state)
+    assert "change_lane_right" in allowed
+
+
+def test_return_requires_right_lane_clear_not_merge_heuristic():
+    state = {
+        "path_blocked": False,
+        "lane_preference_allowed": True,
+        "preferred_action": "follow_lane",
+        "return_lane_side": "right",
+        "left_lane_clear": True,
+        "right_lane_clear": False,
+        "left_lane_available": True,
+        "right_lane_available": True,
+        "maneuver_allowed": False,
+        "lane_change_allowed": False,
+        "nearby_actors": [
+            {
+                "type": "vehicle.npc",
+                "ego_frame": {"longitudinal_m": 17.0, "lateral_m": 4.3},
+            }
+        ],
+    }
+    assert not is_action_allowed("change_lane_right", state)
+    assert "change_lane_right" not in compute_allowed_actions(state)
+    assert is_action_allowed("follow_lane", state)
+
+
+def test_follow_lane_blocked_while_centering_incomplete():
+    state = {
+        "path_blocked": False,
+        "lane_preference_allowed": True,
+        "preferred_action": "change_lane_right",
+        "lane_centering_incomplete": True,
+        "lane_centering_side": "right",
+        "left_lane_clear": True,
+        "right_lane_clear": True,
+        "left_lane_available": True,
+        "right_lane_available": True,
+        "maneuver_allowed": False,
+        "lane_change_allowed": False,
+    }
+    assert not is_action_allowed("follow_lane", state)
+    assert "change_lane_right" in compute_allowed_actions(state)

@@ -18,6 +18,7 @@ from agent.llm_config import (
     resolve_model,
     resolve_ollama_base_url,
     resolve_provider,
+    resolve_provider_base_url,
 )
 from pipeline_log import log_stage
 
@@ -32,6 +33,7 @@ class LLMClient:
         self._gemini_base_url: str | None = None
         self._gemini_timeout: float = 20.0
         self.model: str | None = None
+        self._verbose = os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG"
         self._setup_client()
 
     def _setup_client(self) -> None:
@@ -75,6 +77,17 @@ class LLMClient:
                 api_key="ollama",
                 max_retries=1,
                 timeout=ollama_timeout,
+            )
+
+        elif self.provider == "rwth":
+            api_key = os.environ.get("RWTH_API_KEY")
+            if not api_key:
+                logger.warning("RWTH_API_KEY not found in environment.")
+            self.client = OpenAI(
+                base_url=resolve_provider_base_url("rwth"),
+                api_key=api_key,
+                max_retries=1,
+                timeout=timeout,
             )
 
         log_stage(
@@ -156,12 +169,49 @@ class LLMClient:
                     response = self.client.chat.completions.create(**kwargs)
                     msg = response.choices[0].message
 
+                finish_reason = None
+                usage = None
+                if self.provider != "gemini":
+                    try:
+                        finish_reason = response.choices[0].finish_reason
+                        if response.usage is not None:
+                            usage = (
+                                f"prompt={response.usage.prompt_tokens} "
+                                f"completion={response.usage.completion_tokens} "
+                                f"total={response.usage.total_tokens}"
+                            )
+                    except (AttributeError, IndexError):
+                        pass
+
                 if msg.tool_calls:
                     called = [tc.function.name for tc in msg.tool_calls]
-                    log_stage(logger, "LLM", "response tool_calls=%s", called)
+                    log_stage(
+                        logger,
+                        "LLM",
+                        "response tool_calls=%s finish=%s usage=[%s]",
+                        called,
+                        finish_reason,
+                        usage or "n/a",
+                    )
+                    # The model's chain-of-thought / rationale is otherwise dropped.
+                    reasoning = (msg.content or "").strip()
+                    if reasoning:
+                        log_stage(
+                            logger,
+                            "LLM",
+                            "reasoning: %s",
+                            reasoning if self._verbose else reasoning[:300],
+                        )
                 else:
                     preview = (msg.content or "")[:80]
-                    log_stage(logger, "LLM", "response text=%r", preview)
+                    log_stage(
+                        logger,
+                        "LLM",
+                        "response text=%r finish=%s usage=[%s]",
+                        preview,
+                        finish_reason,
+                        usage or "n/a",
+                    )
                 return msg
             except Exception as e:
                 wait_s = self._rate_limit_wait_s(e)

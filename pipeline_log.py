@@ -27,6 +27,8 @@ def summarize_world_state(state: dict, max_actors: int = 3) -> str:
         f"blocking={state.get('blocking_vehicle_ahead')}",
         f"L_clear={state.get('left_lane_clear')}",
         f"R_clear={state.get('right_lane_clear')}",
+        f"rightmost={state.get('on_rightmost_lane')}",
+        f"pref={state.get('preferred_action')}",
         f"actors={len(state.get('nearby_actors', []))}",
         *(
             [f"lead={state['lead_vehicle']['distance_m']}m stat={state['lead_vehicle']['is_stationary']}"]
@@ -77,6 +79,21 @@ def log_tool_result(
         log_stage(logger, "MCP", "get_world_state -> %s", summarize_world_state(payload))
         if verbose:
             log_stage(logger, "MCP", "full state: %s", json.dumps(payload, indent=2))
+    elif tool_name == "preview_action":
+        log_stage(
+            logger,
+            "MCP",
+            "preview_action -> action=%s feasible=%s merge_d=%s merge_t=%s tgt_side=%s tgt_lane=%s reasons=%s",
+            payload.get("action"),
+            payload.get("feasible"),
+            payload.get("merge_distance_m"),
+            payload.get("merge_duration_s"),
+            payload.get("target_side"),
+            payload.get("target_lane_id"),
+            payload.get("reasons"),
+        )
+        if verbose:
+            log_stage(logger, "MCP", "full preview: %s", json.dumps(payload, indent=2))
     elif tool_name == "execute_action":
         log_stage(
             logger,

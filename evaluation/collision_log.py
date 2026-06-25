@@ -17,7 +17,7 @@ class CollisionLogGate:
         self._on_first_contact = on_first_contact
         self._burst_count = 0
 
-    def record(self, other_actor_type: str) -> None:
+    def record(self, other_actor_type: str, detail: Optional[str] = None) -> None:
         now = time.time()
         self.total_collisions += 1
 
@@ -34,9 +34,10 @@ class CollisionLogGate:
             self._suppressed_in_burst = 0
             self._burst_count += 1
             logger.error(
-                "[collision] contact with %s (session total=%d)",
+                "[collision] contact with %s (session total=%d)%s",
                 other_actor_type,
                 self.total_collisions,
+                f" | {detail}" if detail else "",
             )
             if self._burst_count == 1 and self._on_first_contact:
                 self._on_first_contact(other_actor_type)

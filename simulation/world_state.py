@@ -10,9 +10,7 @@ _IN_LANE_LATERAL_M = 2.5
 _LEFT_LANE_RANGE = (-4.5, -1.2)
 _RIGHT_LANE_RANGE = (1.2, 4.5)
 _BLOCKING_MAX_LONGITUDINAL_M = float(os.getenv("BLOCKING_VEHICLE_MAX_DIST_M", "18.0"))
-_BLOCKING_MAX_LATERAL_M = float(os.getenv("BLOCKING_VEHICLE_MAX_LATERAL_M", "12.0"))
 _SCENARIO_NPC_MAX_LONGITUDINAL_M = float(os.getenv("SCENARIO_NPC_MAX_DIST_M", "70.0"))
-_SCENARIO_NPC_MAX_LATERAL_M = float(os.getenv("SCENARIO_NPC_MAX_LATERAL_M", "6.0"))
 _DETECTION_RADIUS_M = float(os.getenv("DETECTION_RADIUS_M", "65.0"))
 _MAX_ACTORS = int(os.getenv("WORLD_STATE_MAX_ACTORS", "10"))
 _STATIONARY_SPEED_MPS = float(os.getenv("STATIONARY_SPEED_MPS", "0.5"))
@@ -95,9 +93,17 @@ def _lane_relation(ego_wp_info: dict | None, actor_wp_info: dict | None) -> dict
     }
 
 
-def _ego_adjacent_lanes(carla_map, location) -> tuple[dict | None, bool, bool]:
+def _is_on_rightmost_driving_lane(waypoint) -> bool:
+    """True when there is no further driving lane to the right."""
+    if waypoint is None:
+        return True
+    right = waypoint.get_right_lane()
+    return right is None or right.lane_type != carla.LaneType.Driving
+
+
+def _ego_adjacent_lanes(carla_map, location) -> tuple[dict | None, bool, bool, bool]:
     if carla_map is None:
-        return None, False, False
+        return None, False, False, True
 
     waypoint = carla_map.get_waypoint(
         location,
@@ -105,19 +111,49 @@ def _ego_adjacent_lanes(carla_map, location) -> tuple[dict | None, bool, bool]:
         lane_type=carla.LaneType.Driving,
     )
     if waypoint is None:
-        return None, False, False
+        return None, False, False, True
 
     left = waypoint.get_left_lane()
     right = waypoint.get_right_lane()
     left_available = left is not None and left.lane_type == carla.LaneType.Driving
     right_available = right is not None and right.lane_type == carla.LaneType.Driving
-    return _get_waypoint_info(carla_map, location), left_available, right_available
+    on_rightmost = _is_on_rightmost_driving_lane(waypoint)
+    return (
+        _get_waypoint_info(carla_map, location),
+        left_available,
+        right_available,
+        on_rightmost,
+    )
 
 
 def _time_to_contact_s(distance_m: float, closing_speed_mps: float) -> float | None:
     if closing_speed_mps <= 0.1:
         return None
     return round(distance_m / closing_speed_mps, 2)
+
+
+def _actor_in_ego_lane(actor: dict, lateral_m: float) -> bool:
+    """True when the actor occupies ego's current driving corridor.
+
+    Geometry (ego-frame lateral) is authoritative: CARLA ``road_id`` can differ
+    along a straight segment while the NPC is still directly ahead.  After a lane
+    change, a bypassed NPC in the adjacent lane has large lateral offset and is
+  excluded even if map lane IDs are ambiguous.
+    """
+    if actor.get("same_lane"):
+        return True
+    return abs(lateral_m) <= _IN_LANE_LATERAL_M
+
+
+def _actor_ahead_in_ego_lane(
+    actor: dict,
+    longitudinal_m: float,
+    lateral_m: float,
+    max_longitudinal_m: float,
+) -> bool:
+    if longitudinal_m <= 0.0 or longitudinal_m >= max_longitudinal_m:
+        return False
+    return _actor_in_ego_lane(actor, lateral_m)
 
 
 def _build_lead_vehicle(actors: list[dict]) -> dict | None:
@@ -131,7 +167,7 @@ def _build_lead_vehicle(actors: list[dict]) -> dict | None:
         lateral = ef.get("lateral_m")
         if longitudinal is None or lateral is None:
             continue
-        in_lane = abs(lateral) <= _IN_LANE_LATERAL_M or actor.get("same_lane")
+        in_lane = _actor_in_ego_lane(actor, lateral)
         if not in_lane or longitudinal <= 0:
             continue
         candidates.append(actor)
@@ -158,7 +194,7 @@ def _build_lead_vehicle(actors: list[dict]) -> dict | None:
         "distance_m": round(distance_m, 2),
         "speed_mps": speed,
         "is_stationary": is_stationary,
-        "in_ego_lane": abs(ef["lateral_m"]) <= _IN_LANE_LATERAL_M or lead.get("same_lane"),
+        "in_ego_lane": _actor_in_ego_lane(lead, ef["lateral_m"]),
         "is_scenario_npc": lead.get("is_scenario_npc", False),
         "closing_speed_mps": closing,
         "time_to_contact_s": _time_to_contact_s(distance_m, closing),
@@ -203,33 +239,35 @@ def _enrich_with_ego_frame(
         actor["is_stationary"] = actor.get("speed", 0.0) < _STATIONARY_SPEED_MPS
 
         if actor["is_scenario_npc"]:
-            in_lane_ahead = (
-                0.0 < longitudinal < _SCENARIO_NPC_MAX_LONGITUDINAL_M
-                and abs(lateral) <= _SCENARIO_NPC_MAX_LATERAL_M
-            )
-            if in_lane_ahead:
+            if _actor_ahead_in_ego_lane(
+                actor, longitudinal, lateral, _SCENARIO_NPC_MAX_LONGITUDINAL_M
+            ):
                 scenario_obstacle_ahead = True
                 if closest_scenario is None or longitudinal < closest_scenario:
                     closest_scenario = longitudinal
-                if abs(lateral) <= _IN_LANE_LATERAL_M:
-                    obstacle_ahead = True
-                    if closest_ahead is None or longitudinal < closest_ahead:
-                        closest_ahead = longitudinal
+                obstacle_ahead = True
+                if closest_ahead is None or longitudinal < closest_ahead:
+                    closest_ahead = longitudinal
 
-        in_ego_lane = abs(lateral) <= _IN_LANE_LATERAL_M
+        in_ego_lane = _actor_in_ego_lane(actor, lateral)
         in_left_lane = _LEFT_LANE_RANGE[0] <= lateral <= _LEFT_LANE_RANGE[1]
         in_right_lane = _RIGHT_LANE_RANGE[0] <= lateral <= _RIGHT_LANE_RANGE[1]
         ahead_band = -5.0 < longitudinal < 45.0
 
-        if in_ego_lane and 0 < longitudinal < 50.0:
+        if (
+            not actor["is_scenario_npc"]
+            and in_ego_lane
+            and 0 < longitudinal < 50.0
+        ):
             obstacle_ahead = True
             if closest_ahead is None or longitudinal < closest_ahead:
                 closest_ahead = longitudinal
 
         if (
             _is_vehicle_actor(actor.get("type", ""))
-            and 0 < longitudinal < _BLOCKING_MAX_LONGITUDINAL_M
-            and abs(lateral) <= _BLOCKING_MAX_LATERAL_M
+            and _actor_ahead_in_ego_lane(
+                actor, longitudinal, lateral, _BLOCKING_MAX_LONGITUDINAL_M
+            )
         ):
             blocking_vehicle_ahead = True
             if closest_blocking is None or longitudinal < closest_blocking:
@@ -328,8 +366,8 @@ class WorldStateExtractor:
         ego_velocity = ego_vehicle.get_velocity()
         ego_speed = _speed(ego_velocity)
 
-        ego_wp_info, left_lane_available, right_lane_available = _ego_adjacent_lanes(
-            carla_map, ego_transform.location
+        ego_wp_info, left_lane_available, right_lane_available, on_rightmost_lane = (
+            _ego_adjacent_lanes(carla_map, ego_transform.location)
         )
 
         actors = world.get_actors()
@@ -384,6 +422,7 @@ class WorldStateExtractor:
 
         state = {
             "detection_radius_m": self.detection_radius,
+            "on_rightmost_lane": on_rightmost_lane,
             "ego_vehicle": {
                 "id": ego_vehicle.id,
                 "type": ego_vehicle.type_id,
@@ -399,6 +438,7 @@ class WorldStateExtractor:
                 "waypoint": ego_wp_info,
                 "left_lane_available": left_lane_available,
                 "right_lane_available": right_lane_available,
+                "on_rightmost_lane": on_rightmost_lane,
             },
             "nearby_actors": nearby_actors,
         }

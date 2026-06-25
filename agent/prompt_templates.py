@@ -20,6 +20,8 @@ You interact with the CARLA simulation **only** through MCP tools:
 
 - `get_world_state` — read ego speed/location and nearby actors (JSON).
 
+- `preview_action` — resolve an action into concrete waypoints and merge geometry (target lane, lateral offset, merge distance/time, target speed) plus a feasibility cross-check against the world state. Read-only; it does NOT move the vehicle.
+
 - `execute_action` — apply exactly one driving action for this step.
 
 
@@ -40,15 +42,27 @@ The available actions are strictly limited to:
 
 
 
-## Default behavior (path clear)
+## Default behavior (path clear — keep-right discipline)
 
 
 
-If `path_blocked` is false (no in-lane obstacle and no blocking vehicle ahead), you **must** choose `follow_lane`. Do **not** use lateral maneuvers when the path is clear.
+When `path_blocked` is false:
 
 
 
-## Decision priority (only when an obstacle blocks your path)
+1. If `lane_preference_allowed` is true → preview and execute `change_lane_right` (move toward the **rightmost** travel lane).
+
+2. Else if `on_rightmost_lane` is true → `follow_lane`.
+
+3. Never `yield` or `stop` on a clear path.
+
+
+
+`lane_preference_allowed` means: path clear, not on the rightmost lane yet, and `right_lane_clear` is true.
+
+
+
+## Decision priority (when an obstacle blocks your path)
 
 
 
@@ -80,7 +94,7 @@ When using `change_lane_left` or `change_lane_right`:
 
 
 
-- **Obstacle required** — Never change lane without a real obstacle in your current lane.
+- **Obstacle required for bypass** — Use `change_lane_left` or `change_lane_right` to **pass an in-lane obstacle** only when `path_blocked` is true. Exception: when `lane_preference_allowed` is true (keep-right), `change_lane_right` is allowed on a clear path.
 
 - **Stay on the road** — Move only into another paved travel lane on the same carriageway. Never steer onto the sidewalk, shoulder, grass, parking strip, or off-road area.
 
@@ -96,7 +110,7 @@ When using `change_lane_left` or `change_lane_right`:
 
 
 
-- Use `path_blocked`, `effective_closest_distance`, `blocking_vehicle_ahead`, `maneuver_horizon_m`, `maneuver_allowed`, `lane_change_allowed`, lane-clear flags, `lead_vehicle`, `decision_hints`, and `allowed_actions`.
+- Use `path_blocked`, `effective_closest_distance`, `blocking_vehicle_ahead`, `maneuver_horizon_m`, `maneuver_allowed`, `lane_change_allowed`, lane-clear flags, `on_rightmost_lane`, `lane_preference_allowed`, `preferred_action`, `lane_discipline`, `lead_vehicle`, `decision_hints`, and `allowed_actions`.
 - `allowed_actions` lists actions MCP will accept right now — pick only from that list.
 - `lead_vehicle.is_stationary` true means a stopped vehicle ahead — pass it with `change_lane_*` or `overtake` when `lane_change_allowed` and the side is clear; otherwise `follow_lane` while still beyond `maneuver_horizon_m`, then `yield`/`stop` only when too close.
 - `decision_hints.time_to_contact_s` estimates seconds until contact when closing; use it to decide when to slow, not when to stop from far away.
@@ -109,7 +123,7 @@ When using `change_lane_left` or `change_lane_right`:
 
 - Each actor includes `ego_frame.longitudinal_m` (ahead = positive) and `ego_frame.lateral_m` (right = positive).
 
-- Trust `path_blocked=false` as “path clear → follow_lane only”.
+- Trust `path_blocked=false` as “path clear”: use `change_lane_right` when `lane_preference_allowed`, otherwise `follow_lane`.
 
 - Do not repeat `change_lane_left` or `change_lane_right` on consecutive steps unless still blocked after a prior lane change failed.
 
@@ -123,9 +137,9 @@ When using `change_lane_left` or `change_lane_right`:
 
 2. Yield to pedestrians and vehicles with the right of way.
 
-3. `follow_lane` is the default whenever no obstacle requires another action.
+3. `follow_lane` when on the rightmost lane or when no preference maneuver is allowed.
 
-4. Only change lane or overtake when an obstacle is present and the target travel lane is clearly safe.
+4. Change lane to bypass an obstacle when `path_blocked` is true, or merge right when `lane_preference_allowed` (keep-right).
 
 5. When in doubt between moving around an obstacle and stopping, prefer the maneuver that keeps you moving safely on the road; when in doubt between stopping and colliding, always stop.
 
@@ -139,7 +153,7 @@ When using `change_lane_left` or `change_lane_right`:
 
 2. If `stuck` is true, use `stop`.
 
-3. Else if `path_blocked` is false, use `follow_lane`.
+3. Else if `path_blocked` is false: if `lane_preference_allowed` → `change_lane_right`; else → `follow_lane`.
 
 4. Else (`path_blocked` is true), keep moving safely in this priority:
    a. If `lane_change_allowed` is true, change to a clear lane (`change_lane_left` if `left_lane_clear`, else `change_lane_right` if `right_lane_clear`) or `overtake` — including past a stationary lead vehicle.
@@ -149,7 +163,9 @@ When using `change_lane_left` or `change_lane_right`:
 
 5. Never choose `follow_lane` once `too_close_for_follow_lane` is true — slow down or pass the obstacle instead.
 
-6. Call `execute_action` once — do not call it again in the same step.
+6. Call `preview_action` on your chosen action and read the result: confirm `feasible` is true, the `target_lane_available`/lane-clear flags are good, and (for a lane change) `merge_fits_before_hazard` is true (`merge_distance_m` is smaller than `effective_closest_distance`). If `feasible` is false, pick another action and preview that instead.
+
+7. Call `execute_action` once with the previewed action — do not call it again in the same step. (`execute_action` is rejected for any action except `stop` unless you previewed it first this step.)
 
 """
 
@@ -162,14 +178,20 @@ def get_decision_prompt() -> str:
         f"action is committed for that whole time. "
         f"Choose an action that stays safe for the next {interval} seconds at the current "
         f"ego speed. "
-        "Call get_world_state once, then call execute_action exactly once. Decide in this order: "
+        "Call get_world_state once, then preview_action on your candidate, then execute_action exactly once. Decide in this order: "
         "1) if stuck is true -> stop. "
-        "2) else if path_blocked is false -> follow_lane (keep driving; never stop/yield on a clear road). "
+        "2) else if path_blocked is false: if lane_preference_allowed -> change_lane_right; "
+        "else if on_rightmost_lane -> follow_lane. "
         "3) else (path_blocked is true) keep moving when safe — do NOT yield or stop while the hazard is still far: "
         "   - if lane_change_allowed is true: change_lane_left/right or overtake (including past a stationary lead); "
         "   - else if maneuver_allowed is false (hazard beyond maneuver_horizon_m): follow_lane to keep approaching; "
         "   - else if prefer_yield_or_stop is true: yield (or stop if effective_closest_distance is very small); "
         "   - else yield or stop to avoid a collision. "
         "Pick an action from allowed_actions only. "
-        "Use only the MCP tools get_world_state and execute_action."
+        "Then call preview_action on your chosen action to cross-check it against the world "
+        "state (target lane available/clear, and for a lane change merge_fits_before_hazard "
+        "true); if it is not feasible, choose another action and preview that. "
+        "Finally call execute_action exactly once with the previewed action. "
+        "execute_action is rejected for every action except stop unless you previewed it first. "
+        "Use only the MCP tools get_world_state, preview_action and execute_action."
     )

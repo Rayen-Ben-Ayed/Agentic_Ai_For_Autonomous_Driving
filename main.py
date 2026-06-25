@@ -14,6 +14,8 @@ from simulation.carla_client import CarlaClient
 from simulation.world_state import WorldStateExtractor
 from simulation.action_executor import ActionExecutor
 from simulation import step_context
+from simulation import telemetry
+from simulation.lane_preference import enrich_keep_right_preference
 from simulation.timing_config import (
     CARLA_FIXED_DELTA_S,
     NUM_STEPS,
@@ -76,6 +78,9 @@ def main():
     args = parser.parse_args()
     log_path = configure_logging(args.log_level, args.log_file)
     logger.info("Logging to %s", log_path)
+    telemetry_path = telemetry.init(log_path)
+    if telemetry_path:
+        logger.info("Per-tick telemetry -> %s", telemetry_path)
 
     carla_host = os.getenv("CARLA_HOST", "127.0.0.1")
     carla_port = int(os.getenv("CARLA_PORT", 2000))
@@ -160,8 +165,25 @@ def main():
             logger.info("%s ========== step %d/%d ==========", PIPELINE, step + 1, num_steps)
 
             snapshot = world_state.get_state()
+            snapshot.update(action_executor.lane_centering_snapshot())
+            enrich_keep_right_preference(snapshot)
             log_state_snapshot(logger, snapshot, prefix="pre-step")
 
+            pose_before = action_executor.ego_pose_snapshot()
+            if pose_before:
+                log_stage(
+                    logger,
+                    "pre-step",
+                    "ego pose x=%.2f y=%.2f yaw=%.1f lane_id=%s road_id=%s speed=%.2f",
+                    pose_before.get("x"),
+                    pose_before.get("y"),
+                    pose_before.get("yaw"),
+                    pose_before.get("lane_id"),
+                    pose_before.get("road_id"),
+                    pose_before.get("speed"),
+                )
+
+            action_executor.set_step_context(step + 1, step_ticks)
             step_context.begin_step(evaluator.metrics.collisions, snapshot)
             if snapshot.get("path_blocked") and not snapshot.get("maneuver_allowed"):
                 log_stage(
@@ -203,9 +225,37 @@ def main():
             # no longer translate into uncontrolled travel between steps.
             if carla_client.is_synchronous():
                 for _ in range(step_ticks):
+                    # Recompute control from the current pose along the planned
+                    # trajectory, then advance one fixed-delta physics frame.
+                    action_executor.tick(CARLA_FIXED_DELTA_S)
                     carla_client.tick()
             else:
                 time.sleep(STEP_INTERVAL_S)
+
+            pose_after = action_executor.ego_pose_snapshot()
+            if pose_before and pose_after:
+                dx = pose_after["x"] - pose_before["x"]
+                dy = pose_after["y"] - pose_before["y"]
+                dist = (dx * dx + dy * dy) ** 0.5
+                lane_changed = pose_before.get("lane_id") != pose_after.get("lane_id")
+                log_stage(
+                    logger,
+                    "post-step",
+                    "moved dx=%.2f dy=%.2f dist=%.2fm | lane_id %s->%s (changed=%s) | "
+                    "speed %.2f->%.2f | pos (%.1f,%.1f)->(%.1f,%.1f)",
+                    dx,
+                    dy,
+                    dist,
+                    pose_before.get("lane_id"),
+                    pose_after.get("lane_id"),
+                    lane_changed,
+                    pose_before.get("speed"),
+                    pose_after.get("speed"),
+                    pose_before.get("x"),
+                    pose_before.get("y"),
+                    pose_after.get("x"),
+                    pose_after.get("y"),
+                )
     finally:
         # Always run teardown so synchronous mode is restored on the server even
         # if the loop raises; otherwise CARLA stays frozen for other clients.
@@ -215,6 +265,7 @@ def main():
         evaluator.cleanup()
         carla_client.cleanup()
         evaluator.log_results()
+        telemetry.close()
 
 
 if __name__ == "__main__":

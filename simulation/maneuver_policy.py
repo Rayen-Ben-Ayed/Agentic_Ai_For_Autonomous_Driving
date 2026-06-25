@@ -102,6 +102,33 @@ def evaluate_maneuver_policy(
     }
 
 
+def _adjacent_lane_action_clear(action: str, state: dict) -> bool:
+    """Whether the target side is clear enough for this lateral action."""
+    if action == "change_lane_left":
+        if not state.get("left_lane_available"):
+            return False
+        if state.get("left_lane_clear"):
+            return True
+        if (
+            state.get("lane_centering_incomplete")
+            and state.get("lane_centering_side") == "left"
+        ):
+            return True
+        return False
+    if action == "change_lane_right":
+        if not state.get("right_lane_available"):
+            return False
+        if state.get("right_lane_clear"):
+            return True
+        if (
+            state.get("lane_centering_incomplete")
+            and state.get("lane_centering_side") == "right"
+        ):
+            return True
+        return False
+    return True
+
+
 def is_stuck_mode(ego_speed_m_s: float, collisions_this_step: int) -> bool:
     return (
         ego_speed_m_s < STUCK_SPEED_MPS
@@ -122,20 +149,41 @@ def is_action_allowed(action: str, state: dict, *, stuck: bool = False) -> bool:
         return action in allowed_actions_when_stuck()
 
     path_blocked = state.get("path_blocked", False)
+    preferred = state.get("preferred_action")
 
     if action == "follow_lane" and state.get("too_close_for_follow_lane"):
         return False
+
+    if action == "follow_lane" and state.get("lane_centering_incomplete"):
+        return False
+
+    # Lane preference when the path is clear (keep-right discipline).
+    if (
+        not path_blocked
+        and state.get("lane_preference_allowed")
+        and action == preferred
+    ):
+        if action == "follow_lane":
+            return True
+        if action in ("change_lane_left", "change_lane_right"):
+            return _adjacent_lane_action_clear(action, state)
 
     if action in PROACTIVE_ACTIONS:
         if not path_blocked or not state.get("maneuver_allowed"):
             return False
 
     if action in LATERAL_ACTIONS and not state.get("lane_change_allowed"):
-        return False
+        preference_ok = (
+            not path_blocked
+            and state.get("lane_preference_allowed")
+            and action == preferred
+        )
+        if not preference_ok:
+            return False
 
-    if action == "change_lane_left" and not state.get("left_lane_clear"):
+    if action == "change_lane_left" and not _adjacent_lane_action_clear("change_lane_left", state):
         return False
-    if action == "change_lane_right" and not state.get("right_lane_clear"):
+    if action == "change_lane_right" and not _adjacent_lane_action_clear("change_lane_right", state):
         return False
     if action == "overtake" and not (
         state.get("left_lane_clear") or state.get("right_lane_clear")

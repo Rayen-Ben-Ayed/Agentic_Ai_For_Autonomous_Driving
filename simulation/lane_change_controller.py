@@ -30,10 +30,6 @@ LANE_CHANGE_STEER_FLOOR = float(
 LANE_CHANGE_LEAD_MARGIN_M = float(
     __import__("os").getenv("LANE_CHANGE_LEAD_MARGIN_M", "4.0")
 )
-# Post-merge: enforce lateral correction before the full center tolerance.
-POST_MERGE_LAT_PRIORITY_M = float(
-    __import__("os").getenv("LANE_CHANGE_POST_MERGE_LAT_PRIORITY_M", "0.35")
-)
 
 
 @dataclass(frozen=True)
@@ -126,38 +122,6 @@ def compute_lane_change_steer(
     return max(-max_steer, min(max_steer, steer))
 
 
-def compute_post_merge_centering_steer(
-    lat_err: float,
-    yaw_err: float,
-    *,
-    max_steer: float,
-) -> float:
-    """Settling steer after the timed lateral profile completes.
-
-    Unlike mid-merge steering, yaw is never damped here and lateral sign always
-    wins when off-line so a small heading error cannot steer deeper into an
-    overshoot (the right-lane failure mode in debug2506_012 step 3).
-    """
-    yaw_err = lc.normalize_yaw_error(yaw_err)
-    if abs(yaw_err) > 45.0:
-        yaw_err = max(-45.0, min(45.0, yaw_err))
-    steer = (-LANE_CHANGE_LAT_GAIN * lat_err) + (
-        LANE_CHANGE_YAW_GAIN * yaw_err
-    )
-    if abs(lat_err) > POST_MERGE_LAT_PRIORITY_M:
-        sign = lc.centering_steer_sign(lat_err)
-        floor = min(
-            max_steer,
-            max(
-                LANE_CHANGE_MIN_STEER * 1.75,
-                abs(lat_err) * LANE_CHANGE_LAT_GAIN * 3.0,
-            ),
-        )
-        if abs(steer) < floor or steer * sign < 0:
-            steer = sign * floor
-    return max(-max_steer, min(max_steer, steer))
-
-
 def is_centered_in_target_frame(
     lat_err: float,
     yaw_err: float,
@@ -188,14 +152,9 @@ def steer_toward_frozen_merge(
 
     lat_err, yaw_err = errors_in_target_frame(ego_x, ego_y, ego_yaw, ref)
     max_steer = lane_change_max_steer(ego_speed)
-    if lateral_frac >= 1.0:
-        steer = compute_post_merge_centering_steer(
-            lat_err, yaw_err, max_steer=max_steer
-        )
-    else:
-        steer = compute_lane_change_steer(
-            lat_err, yaw_err, max_steer=max_steer
-        )
+    steer = compute_lane_change_steer(
+        lat_err, yaw_err, max_steer=max_steer
+    )
     return steer, lat_err, yaw_err
 
 

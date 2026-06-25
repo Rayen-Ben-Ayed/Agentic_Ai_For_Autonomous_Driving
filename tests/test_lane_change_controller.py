@@ -1,7 +1,6 @@
 from simulation.lane_change_controller import (
     LanePose,
     compute_lane_change_steer,
-    compute_post_merge_centering_steer,
     direct_lateral_fraction,
     errors_in_target_frame,
     is_centered_in_target_frame,
@@ -54,34 +53,6 @@ def test_errors_measured_in_target_frame():
 def test_lane_change_steer_pushes_toward_center():
     steer = compute_lane_change_steer(1.2, 0.0, max_steer=0.45)
     assert steer < 0  # left steer when right of lane
-
-
-def test_post_merge_centering_recovers_right_overshoot():
-    """debug2506_012 step 3: overshoot with small yaw must steer left, strongly."""
-    steer = compute_post_merge_centering_steer(0.81, 4.2, max_steer=0.35)
-    assert steer < -0.15
-    assert steer * 0.81 < 0
-
-
-def test_post_merge_centering_ignores_yaw_when_it_would_worsen_overshoot():
-    """Mid-settle tick 112: +lat with +yaw must not command right steer."""
-    steer = compute_post_merge_centering_steer(0.65, 3.3, max_steer=0.35)
-    assert steer < 0
-
-
-def test_post_merge_uses_stronger_authority_than_mid_merge():
-    mid = compute_lane_change_steer(0.81, 4.2, max_steer=0.35)
-    post = compute_post_merge_centering_steer(0.81, 4.2, max_steer=0.35)
-    assert abs(post) > abs(mid)
-
-
-def test_steer_toward_frozen_merge_uses_post_merge_law_at_completion():
-    src, tgt = _poses_right()
-    steer, lat_err, _ = steer_toward_frozen_merge(
-        0.0, -2.85, 6.0, 5.3, src, tgt, 1.0
-    )
-    assert lat_err > 0.6
-    assert steer < -0.15
 
 
 def test_steer_toward_frozen_merge_right_lane():

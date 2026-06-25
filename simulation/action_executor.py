@@ -33,6 +33,9 @@ LANE_CHANGE_MAX_STEPS = int(
     os.getenv("LANE_CHANGE_MAX_STEPS", str(_default_lane_change_steps))
 )
 OVERTAKE_SPEED_FACTOR = float(os.getenv("OVERTAKE_SPEED_FACTOR", "1.1"))
+# Step used to walk a frozen lane anchor forward without letting waypoint.next()
+# pick an arbitrary junction connector (which corrupts the merge reference).
+LANE_ADVANCE_STEP_M = float(os.getenv("LANE_ADVANCE_STEP_M", "2.0"))
 
 
 class ActionExecutor:
@@ -232,6 +235,37 @@ class ActionExecutor:
         ahead = waypoint.next(dist)
         return ahead[0] if ahead else waypoint
 
+    def _advance_along_lane(self, waypoint, dist_m: float):
+        """Advance ``waypoint`` forward ``dist_m`` along its lane, freezing at junctions.
+
+        ``waypoint.next(d)`` returns an arbitrary successor inside a junction, so a
+        frozen lane lookahead corrupts the instant the advance crosses a junction
+        boundary: the reference jumps onto a curving turn connector (heading and
+        position rotate), the merge controller reads a huge lateral/yaw error and
+        steers the ego back out of the lane it just merged into. When the anchor is
+        on an ordinary road, walk forward in small steps and stop at the last pose
+        before the junction. When it already starts inside a junction, fall back to
+        next() since there is no pre-junction pose to hold.
+        """
+        if waypoint is None or dist_m <= 0:
+            return waypoint
+        if waypoint.is_junction:
+            ahead = waypoint.next(dist_m)
+            return ahead[0] if ahead else waypoint
+        cur = waypoint
+        remaining = dist_m
+        while remaining > 1e-3:
+            step = min(LANE_ADVANCE_STEP_M, remaining)
+            ahead = cur.next(step)
+            if not ahead:
+                break
+            cand = ahead[0]
+            if cand.is_junction:
+                break  # freeze at the last pose before the junction
+            cur = cand
+            remaining -= step
+        return cur
+
     def _adjacent_lane_waypoint_raw(self, waypoint, side: str):
         """Adjacent driving-lane waypoint at the same longitudinal position."""
         if not waypoint:
@@ -309,11 +343,7 @@ class ActionExecutor:
         if wp is None:
             return None
         dist = max(0.0, travel_m) + lc.LOOKAHEAD_M
-        if dist > 0:
-            nxt = wp.next(dist)
-            if nxt:
-                wp = nxt[0]
-        return wp
+        return self._advance_along_lane(wp, dist)
 
     def _ego_speed(self, ego_vehicle) -> float:
         v = ego_vehicle.get_velocity()
@@ -730,18 +760,10 @@ class ActionExecutor:
             self._centering_side = None
             self._target_lane_id = None
 
-        target_speed = plan.target_speed_mps
-        if lateral_frac >= 1.0 and not lcc.is_centered_in_target_frame(
-            lat_err, yaw_err
-        ):
-            # Shed speed while settling so steer authority can catch overshoots.
-            target_speed = min(
-                target_speed,
-                max(lc.CENTER_CREEP_SPEED_MPS, current_speed * 0.85),
-            )
-
-        control = self._drive_with_target_speed(ego_vehicle, target_speed, steer)
-        return control, target_speed, lat_err
+        control = self._drive_with_target_speed(
+            ego_vehicle, plan.target_speed_mps, steer
+        )
+        return control, plan.target_speed_mps, lat_err
 
     def _control_for(self, ego_vehicle, action: str, elapsed_s: float):
         """Compute (control, target_speed, lat_err) for the action at this instant."""

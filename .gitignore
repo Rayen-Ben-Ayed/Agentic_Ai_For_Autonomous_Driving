@@ -34,6 +34,10 @@ htmlcov/
 # Evaluation results
 evaluation_results.json
 
+# Run logs
+logs/
+*.log
+
 # OS
 .DS_Store
 .DS_Store?

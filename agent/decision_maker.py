@@ -1,101 +1,145 @@
+import asyncio
 import json
 import logging
-from agent.prompt_templates import SYSTEM_PROMPT, get_decision_prompt
+from typing import Any, Optional
+
+from agent.prompt_templates import get_decision_prompt, get_system_prompt
+from mcp_interface.client import MCPDrivingClient
+from pipeline_log import log_stage
+from simulation.timing_config import MAX_LLM_TOOL_ROUNDS
 
 logger = logging.getLogger(__name__)
 
+VALID_ACTIONS = frozenset({
+    "overtake",
+    "follow_lane",
+    "stop",
+    "yield",
+    "change_lane_left",
+    "change_lane_right",
+})
+
+# After this many rejected actions in one step, stop deliberating and force a
+# safe stop instead of burning more (slow) LLM rounds on the same dead end.
+MAX_REJECTIONS_BEFORE_STOP = 2
+
+
 class DecisionMaker:
-    def __init__(self, llm_client, mcp_server):
+    def __init__(self, llm_client, mcp_client: MCPDrivingClient):
         self.llm_client = llm_client
-        self.mcp_server = mcp_server
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        
-        # Define tools for the LLM
-        self.tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_world_state",
-                    "description": "Retrieves the current world state from the CARLA simulation in JSON format.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "execute_action",
-                    "description": "Executes a discrete driving action in the CARLA simulation.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "action": {
-                                "type": "string",
-                                "enum": ["overtake", "follow_lane", "stop", "yield", "change_lane_left", "change_lane_right"],
-                                "description": "The action to execute."
-                            }
-                        },
-                        "required": ["action"]
-                    }
-                }
-            }
+        self.mcp_client = mcp_client
+
+    def run_step(self) -> Optional[str]:
+        """
+        One agent step: LLM uses MCP tools to read CARLA state and execute an action.
+        execute_action is applied in CARLA via the MCP server when the LLM calls it.
+        """
+        return asyncio.run(self._run_step_async())
+
+    async def _force_safe_stop(self, reason: str) -> Optional[str]:
+        """Deterministic safety net: apply `stop` directly via MCP.
+
+        `stop` is never rejected by the policy, so this guarantees the vehicle
+        gets a defensive command instead of coasting on a stale control when the
+        agent fails to choose a valid action.
+        """
+        log_stage(logger, "agent", "fallback -> stop (%s)", reason)
+        result_text = await self.mcp_client.call_tool("execute_action", {"action": "stop"})
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            result = {}
+        if result.get("status") == "success":
+            return "stop"
+        logger.error("Safe-stop fallback did not apply: %s", result_text)
+        return None
+
+    async def _run_step_async(self) -> Optional[str]:
+        tools = await self.mcp_client.get_openai_tools()
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": get_system_prompt()},
+            {"role": "user", "content": get_decision_prompt()},
         ]
 
-    def make_decision(self):
-        """
-        Runs the decision loop for a single step.
-        """
-        # Reset messages for each decision to avoid hallucinating based on long history
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        self.messages.append({"role": "user", "content": "Analyze the current world state and execute the next action."})
+        executed_action: Optional[str] = None
+        rejection_count = 0
 
-        # Loop to handle tool calls
-        max_iterations = 5
-        for _ in range(max_iterations):
-            response_message = self.llm_client.generate_response(self.messages, tools=self.tools)
-            
+        for round_idx in range(1, MAX_LLM_TOOL_ROUNDS + 1):
+            log_stage(
+                logger, "agent", "LLM round %d/%d", round_idx, MAX_LLM_TOOL_ROUNDS
+            )
+            response_message = self.llm_client.generate_response(messages, tools=tools)
             if not response_message:
-                logger.error("No response from LLM.")
-                break
+                return await self._force_safe_stop("LLM returned no response")
 
-            self.messages.append(response_message)
+            if not response_message.tool_calls:
+                logger.info("LLM response without tool call: %s", response_message.content)
+                return await self._force_safe_stop("LLM produced no tool call")
 
-            if response_message.tool_calls:
-                for tool_call in response_message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
-                    
-                    logger.info(f"LLM called tool: {function_name} with args: {function_args}")
-                    
-                    # Execute the tool via the MCP server (simulated direct call here for skeleton)
-                    # In a full MCP setup, this would be an MCP client request
-                    if function_name == "get_world_state":
-                        # We call the underlying function registered in FastMCP
-                        # For the skeleton, we can import the function directly or use the FastMCP instance
-                        from mcp_interface.server import get_world_state
-                        result = get_world_state()
-                    elif function_name == "execute_action":
-                        from mcp_interface.server import execute_action
-                        result = execute_action(function_args.get("action"))
-                    else:
-                        result = json.dumps({"error": f"Unknown tool: {function_name}"})
+            assistant_message: dict[str, Any] = {
+                "role": "assistant",
+                "content": response_message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in response_message.tool_calls
+                ],
+            }
+            messages.append(assistant_message)
 
-                    self.messages.append({
-                        "tool_call_id": tool_call.id,
+            for tool_call in response_message.tool_calls:
+                name = tool_call.function.name
+                try:
+                    arguments = json.loads(tool_call.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    arguments = {}
+
+                result_text = await self.mcp_client.call_tool(name, arguments)
+                messages.append(
+                    {
                         "role": "tool",
-                        "name": function_name,
-                        "content": result,
-                    })
-                    
-                    # If action was executed, we can consider the decision step complete
-                    if function_name == "execute_action":
-                        return function_args.get("action")
-            else:
-                # No tool calls, LLM just responded with text
-                logger.info(f"LLM response: {response_message.content}")
-                break
-                
-        return None
+                        "tool_call_id": tool_call.id,
+                        "content": result_text,
+                    }
+                )
+
+                if name == "execute_action":
+                    action = arguments.get("action")
+                    try:
+                        result = json.loads(result_text)
+                    except json.JSONDecodeError:
+                        result = {}
+                    if result.get("status") == "success" and action in VALID_ACTIONS:
+                        log_stage(logger, "agent", "step complete -> %s", action)
+                        executed_action = action
+                        break
+                    elif result.get("status") == "rejected":
+                        rejection_count += 1
+                        log_stage(
+                            logger,
+                            "agent",
+                            "MCP rejected %s (%d/%d): %s",
+                            action,
+                            rejection_count,
+                            MAX_REJECTIONS_BEFORE_STOP,
+                            result.get("message"),
+                        )
+                    elif action:
+                        log_stage(logger, "agent", "action not applied: %s | %s", action, result)
+
+            if executed_action:
+                return executed_action
+
+            if rejection_count >= MAX_REJECTIONS_BEFORE_STOP:
+                return await self._force_safe_stop(
+                    f"{rejection_count} rejected actions"
+                )
+
+        logger.warning("Agent exceeded max MCP tool rounds without execute_action")
+        return await self._force_safe_stop("max tool rounds exhausted")

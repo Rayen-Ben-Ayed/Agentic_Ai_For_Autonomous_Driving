@@ -15,7 +15,7 @@ agentic-driving/
 │   ├── server.py               # MCP server exposing simulation state and actions
 │   └── tools.py                # Defined MCP tools (e.g., get_world_state, execute_action)
 ├── agent/                      # 3. Agentic AI Integration
-│   ├── llm_client.py           # API integration for Groq, Cerebras, and Ollama
+│   ├── llm_client.py           # API integration for Groq, Cerebras, Ollama, and remote Ollama
 │   ├── prompt_templates.py     # Prompts for scenario decision making
 │   └── decision_maker.py       # Logic to query LLM and parse the chosen action
 ├── evaluation/                 # 4. Evaluation Module
@@ -28,7 +28,7 @@ agentic-driving/
 ## Execution Steps
 
 1. **Start CARLA**: Run the CARLA simulator executable (`CarlaUE4.exe` or `./CarlaUE4.exe -dx11 -quality-level=Low -ResX=800 -ResY=600 -windowed`).
-2. **Configure Environment**: Create a `.env` file in the project root and add your API keys (e.g., `GROQ_API_KEY=your_key`).
+2. **Configure Environment**: Create a `.env` file in the project root and add your API keys (e.g., `GROQ_API_KEY=your_key`). Set `LLM_PROVIDER` to one of `groq`, `cerebras`, `ollama` (local), or `ollama-remote` (network Ollama host). For remote Ollama, defaults target `http://10.230.225.149:11434/v1` with model `llama3.1:8b`; override with `OLLAMA_REMOTE_BASE_URL` and `OLLAMA_REMOTE_MODEL` if needed.
 3. **Install Dependencies**: `pip install -r requirements.txt`
 4. **Run a Scenario**: Execute the main script with the desired scenario number:
    ```bash

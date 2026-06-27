@@ -1,8 +1,13 @@
 from pathlib import Path
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
-load_dotenv(_PROJECT_ROOT / ".env")
+if load_dotenv is not None:
+    load_dotenv(_PROJECT_ROOT / ".env")
 
 import time
 import logging
@@ -24,10 +29,6 @@ from simulation.timing_config import (
     simulated_duration_s,
     ticks_per_step,
 )
-from mcp_interface.server import init_mcp_server
-from mcp_interface.client import MCPDrivingClient
-from agent.llm_client import LLMClient
-from agent.decision_maker import DecisionMaker
 from evaluation.evaluator import Evaluator
 from pipeline_log import log_stage, log_state_snapshot, PIPELINE
 
@@ -64,6 +65,11 @@ def main():
     parser = argparse.ArgumentParser(description="Run Agentic Driving Scenarios")
     parser.add_argument("--scenario", type=str, default="1", help="Scenario number to run (e.g., 1)")
     parser.add_argument(
+        "--with-agent",
+        action="store_true",
+        help="Run the LLM agent for visual scenarios. By default scenarios 2, 3, 6, 7, and 8 are visual-only.",
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default=os.getenv("LOG_LEVEL", "INFO"),
@@ -88,14 +94,16 @@ def main():
     num_steps = NUM_STEPS
     step_ticks = ticks_per_step()
     verbose_state = args.log_level.upper() == "DEBUG"
+    scenario_only = args.scenario in {"2", "3", "6", "7", "8"} and not args.with_agent
 
     log_stage(
         logger,
         "init",
-        "CARLA %s:%s scenario=%s llm=%s steps=%d step=%ss ticks/step=%d sim_duration=%ss",
+        "CARLA %s:%s scenario=%s mode=%s llm=%s steps=%d step=%ss ticks/step=%d sim_duration=%ss",
         carla_host,
         carla_port,
         args.scenario,
+        "scenario-only" if scenario_only else "agent",
         llm_provider,
         num_steps,
         format_step_interval_s(),
@@ -106,8 +114,37 @@ def main():
     carla_client = CarlaClient(host=carla_host, port=carla_port)
     try:
         carla_client.connect()
+        scenario_spawn_point = None
+        if args.scenario in {"6", "7", "8"}:
+            from simulation.scenarios.scenario_07_blocked_lane_clear_left import (
+                SCENARIO_MAPS,
+                select_midroad_spawn_point,
+            )
+
+            target_map = SCENARIO_MAPS.get(args.scenario)
+            if target_map and target_map not in carla_client.get_world().get_map().name:
+                logger.info(
+                    "Scenario %s loading %s for a cleaner mid-road setup.",
+                    args.scenario,
+                    target_map,
+                )
+                carla_client.world = carla_client.client.load_world(target_map)
+                time.sleep(1.0)
+            if args.scenario == "6":
+                from simulation.scenarios.scenario_06_right_lane_pullout import (
+                    select_right_lane_pullout_spawn_point,
+                )
+
+                scenario_spawn_point = select_right_lane_pullout_spawn_point(
+                    carla_client.get_world()
+                )
+            else:
+                scenario_spawn_point = select_midroad_spawn_point(
+                    carla_client.get_world(),
+                    variant=args.scenario,
+                )
         carla_client.enable_synchronous_mode(fixed_delta_seconds=CARLA_FIXED_DELTA_S)
-        carla_client.spawn_ego_vehicle()
+        carla_client.spawn_ego_vehicle(spawn_point=scenario_spawn_point)
         carla_client.tick()
     except Exception as e:
         logger.error("Failed to initialize CARLA simulation: %s", e)
@@ -119,18 +156,6 @@ def main():
     world_state = WorldStateExtractor(carla_client)
     action_executor = ActionExecutor(carla_client)
 
-    log_stage(logger, "init", "MCP server bridge (in-process FastMCP)")
-    init_mcp_server(carla_client, world_state, action_executor)
-
-    try:
-        llm_client = LLMClient(provider=llm_provider)
-        mcp_client = MCPDrivingClient(verbose_state=verbose_state)
-        decision_maker = DecisionMaker(llm_client, mcp_client)
-        log_stage(logger, "init", "LLM model=%s", llm_client.model)
-    except Exception as e:
-        logger.error("Failed to initialize LLM client: %s", e)
-        return
-
     evaluator = Evaluator(carla_client)
     if carla_client.get_ego_vehicle():
         evaluator.setup_sensors()
@@ -138,9 +163,37 @@ def main():
     if args.scenario == "1":
         from simulation.scenarios.scenario_01_braking import Scenario01Braking
         scenario = Scenario01Braking(carla_client)
+    elif args.scenario == "2":
+        from simulation.scenarios.scenario_02_front_vehicle_braking import (
+            Scenario02FrontVehicleBraking,
+        )
+        scenario = Scenario02FrontVehicleBraking(carla_client)
+    elif args.scenario == "3":
+        from simulation.scenarios.scenario_03_pedestrian_crossing import (
+            Scenario03PedestrianCrossing,
+        )
+        scenario = Scenario03PedestrianCrossing(carla_client)
+    elif args.scenario == "6":
+        from simulation.scenarios.scenario_06_right_lane_pullout import (
+            Scenario06RightLanePullout,
+        )
+        scenario = Scenario06RightLanePullout(carla_client)
+    elif args.scenario == "7":
+        from simulation.scenarios.scenario_07_blocked_lane_clear_left import (
+            Scenario07BlockedLaneClearLeft,
+        )
+        scenario = Scenario07BlockedLaneClearLeft(carla_client)
+    elif args.scenario == "8":
+        from simulation.scenarios.scenario_08_blocked_lane_unsafe_left import (
+            Scenario08BlockedLaneUnsafeLeft,
+        )
+        scenario = Scenario08BlockedLaneUnsafeLeft(carla_client)
     else:
         logger.error("Scenario %s is not implemented yet!", args.scenario)
         return
+
+    if hasattr(scenario, "control_ego"):
+        scenario.control_ego = scenario_only
 
     scenario.setup()
     carla_client.tick()
@@ -159,10 +212,52 @@ def main():
         [actor.id for actor in scenario.npc_actors if actor.is_alive]
     )
 
+    decision_maker = None
+    if not scenario_only:
+        try:
+            from mcp_interface.server import init_mcp_server
+            from mcp_interface.client import MCPDrivingClient
+            from agent.llm_client import LLMClient
+            from agent.decision_maker import DecisionMaker
+
+            log_stage(logger, "init", "MCP server bridge (in-process FastMCP)")
+            init_mcp_server(carla_client, world_state, action_executor)
+            llm_client = LLMClient(provider=llm_provider)
+            mcp_client = MCPDrivingClient(verbose_state=verbose_state)
+            decision_maker = DecisionMaker(llm_client, mcp_client)
+            log_stage(logger, "init", "LLM model=%s", llm_client.model)
+        except Exception as e:
+            logger.error("Failed to initialize LLM client: %s", e)
+            scenario.teardown()
+            evaluator.cleanup()
+            carla_client.cleanup()
+            return
+    else:
+        log_stage(logger, "init", "scenario-only playback: LLM agent disabled")
+
     log_stage(logger, "sim", "starting loop (%d steps)", num_steps)
     try:
         for step in range(num_steps):
             logger.info("%s ========== step %d/%d ==========", PIPELINE, step + 1, num_steps)
+
+            if scenario_only:
+                for tick_idx in range(step_ticks):
+                    if hasattr(scenario, "update"):
+                        scenario.update((step * step_ticks) + tick_idx)
+                    carla_client.tick()
+                    if carla_client.get_ego_vehicle():
+                        spectator = carla_client.get_world().get_spectator()
+                        transform = carla_client.get_ego_vehicle().get_transform()
+                        import carla
+                        forward_vector = transform.get_forward_vector()
+                        camera_loc = transform.location - (forward_vector * 10) + carla.Location(z=5)
+                        camera_rot = carla.Rotation(pitch=-15, yaw=transform.rotation.yaw)
+                        spectator.set_transform(carla.Transform(camera_loc, camera_rot))
+                    time.sleep(CARLA_FIXED_DELTA_S)
+                continue
+
+            if hasattr(scenario, "update"):
+                scenario.update(step)
 
             snapshot = world_state.get_state()
             snapshot.update(action_executor.lane_centering_snapshot())
@@ -224,11 +319,17 @@ def main():
             # is the ONLY thing that moves the world, so a slow LLM decision can
             # no longer translate into uncontrolled travel between steps.
             if carla_client.is_synchronous():
-                for _ in range(step_ticks):
+                for tick_idx in range(step_ticks):
+                    if hasattr(scenario, "update"):
+                        scenario.update(
+                            (step * step_ticks) + tick_idx,
+                            allow_trigger=False,
+                        )
                     # Recompute control from the current pose along the planned
                     # trajectory, then advance one fixed-delta physics frame.
                     action_executor.tick(CARLA_FIXED_DELTA_S)
                     carla_client.tick()
+                    time.sleep(CARLA_FIXED_DELTA_S)
             else:
                 time.sleep(STEP_INTERVAL_S)
 

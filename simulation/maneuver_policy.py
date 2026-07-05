@@ -4,6 +4,7 @@ Speed- and latency-aware rules for when proactive maneuvers (lane change, overta
 import os
 from typing import Optional
 
+from simulation.junction_planner import JUNCTION_ACTIONS
 from simulation.timing_config import AGENT_LATENCY_S, STEP_INTERVAL_S
 SAFETY_MARGIN_M = float(os.getenv("MANEUVER_SAFETY_MARGIN_M", "5.0"))
 MAX_MANEUVER_TRIGGER_M = float(os.getenv("MAX_MANEUVER_TRIGGER_M", "40.0"))
@@ -28,6 +29,7 @@ ALL_DRIVING_ACTIONS = (
     "yield",
     "change_lane_left",
     "change_lane_right",
+    *JUNCTION_ACTIONS,
 )
 
 LATERAL_ACTIONS = frozenset({
@@ -140,6 +142,17 @@ def allowed_actions_when_stuck() -> frozenset[str]:
     return frozenset({"stop", "yield"})
 
 
+def junction_round1_commit_pending(state: dict) -> bool:
+    """Round 1 at a passable junction: commit a direction, don't park on a clear path."""
+    if not state.get("junction_ahead") or state.get("junction_committed"):
+        return False
+    if not state.get("junction_preferred_action"):
+        return False
+    if state.get("path_blocked") or state.get("too_close_for_follow_lane"):
+        return False
+    return True
+
+
 def is_action_allowed(action: str, state: dict, *, stuck: bool = False) -> bool:
     """Mirror MCP execute_action validation (positive form)."""
     if state.get("error"):
@@ -148,14 +161,58 @@ def is_action_allowed(action: str, state: dict, *, stuck: bool = False) -> bool:
     if stuck:
         return action in allowed_actions_when_stuck()
 
+    # A pedestrian is crossing the ego path. A lane change/overtake cannot escape
+    # a walker crossing the whole carriageway — it only leaves the ego misaligned
+    # (which then whips the junction tracker off-road). Force the braking
+    # response: yield/stop only, until the crossing clears.
+    if state.get("preferred_caution_action") in ("yield", "stop"):
+        return action in ("yield", "stop")
+
+    if junction_round1_commit_pending(state):
+        return action == state.get("junction_preferred_action")
+
     path_blocked = state.get("path_blocked", False)
     preferred = state.get("preferred_action")
+    junction_imminent = bool(state.get("junction_imminent"))
+
+    # Two-round junction handling: round 1 is a one-time direction commit
+    # (go_straight/turn_right/turn_left); round 2 is the ordinary action menu
+    # below, which steers along whatever was committed. Once committed, the
+    # junction actions themselves are no longer offered — re-deciding is not
+    # needed, and it previously combined with a blanket follow_lane/lateral
+    # veto to produce a dead end (no action left once an obstacle was merely
+    # "not immediately close" near a junction).
+    if action in JUNCTION_ACTIONS:
+        if not state.get("junction_ahead"):
+            return False
+        if state.get("junction_committed"):
+            return False  # already decided; drive it with follow_lane/yield/stop
+        # Fixed priority (forward, then right, then left) among lane-legal exits:
+        # only the single best available exit is offered as a junction action.
+        if action != state.get("junction_preferred_action"):
+            return False
+        if state.get("too_close_for_follow_lane"):
+            return False  # hazard immediately ahead: yield/stop first
+        return True
 
     if action == "follow_lane" and state.get("too_close_for_follow_lane"):
         return False
 
     if action == "follow_lane" and state.get("lane_centering_incomplete"):
         return False
+
+    # No exit exists at all (dead end, or a junction with no usable branch):
+    # in-lane cruising and lateral merges cannot resolve it, only yield/stop
+    # can. This is narrower than blocking on every junction — an ordinary,
+    # passable junction never restricts follow_lane/lane-change this way.
+    no_exit_ahead = (
+        state.get("junction_ahead") and state.get("junction_preferred_action") is None
+    ) or state.get("road_end_ahead")
+    if junction_imminent and no_exit_ahead:
+        if action == "follow_lane":
+            return False
+        if action in LATERAL_ACTIONS:
+            return False
 
     # Lane preference when the path is clear (keep-right discipline).
     if (

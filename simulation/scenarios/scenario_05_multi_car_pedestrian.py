@@ -2,40 +2,47 @@ import logging
 
 import carla
 
-from .base_scenario import BaseScenario
+from .scenario_04_multi_car_braking import Scenario04MultiCarBraking
 
 logger = logging.getLogger(__name__)
 
 
-class Scenario03PedestrianCrossing(BaseScenario):
+class Scenario05MultiCarPedestrian(Scenario04MultiCarBraking):
+    """Multi-car traffic plus a pedestrian crossing the ego path ahead.
+
+    Combines scenario 4 (slow lead + side traffic) with scenario 3 (crosswalk
+    pedestrian). The pedestrian waits at the roadside, then crosses when the
+    ego is within trigger range while NPC vehicles continue moving slowly.
+    """
+
     def __init__(self, carla_client):
         super().__init__(carla_client)
 
         self.pedestrian = None
         self.control_ego = False
         self.ego_throttle = 0.50
-        self.internal_step = 0
+        self.ped_internal_step = 0
 
         self.crossing_location = None
         self.pedestrian_start_location = None
         self.walk_direction = None
 
         self.pedestrian_started = False
-        self.agent_trigger_distance = 34.0
-        self.visual_trigger_distance = 24.0
-        self.pedestrian_speed = 1.8  # m/s, brisk walking pace
+        self.ped_agent_trigger_distance = 34.0
+        self.ped_visual_trigger_distance = 24.0
+        self.pedestrian_speed = 1.8
         self.start_side_distance = 5.5
         self.fallback_crossing_distance = 32.0
-        self._last_logged_bucket = None
+        self._ped_last_logged_bucket = None
 
     def setup(self):
-        """
-        Pedestrian waits at a realistic roadside/crosswalk position ahead of ego,
-        then walks across from right to left.
-        """
+        super().setup()
+        if self.primary_npc is None:
+            return
+
         ego = self.carla_client.get_ego_vehicle()
         if not ego:
-            logger.error("Ego vehicle not found. Cannot setup scenario.")
+            logger.error("Ego vehicle not found. Cannot setup pedestrian.")
             return
 
         ego_tf = ego.get_transform()
@@ -51,26 +58,52 @@ class Scenario03PedestrianCrossing(BaseScenario):
         self._spawn_pedestrian()
 
         logger.info("=================================================")
-        logger.info("SCENARIO 03: PEDESTRIAN CROSSING")
+        logger.info("SCENARIO 05: MULTI-CAR TRAFFIC + PEDESTRIAN CROSSING")
         logger.info("Pedestrian waits at the roadside, then crosses the ego path.")
         logger.info("Ego scenario throttle: %.2f", self.ego_throttle)
-        logger.info("Pedestrian trigger distance: %.1f m", self._active_trigger_distance())
+        logger.info(
+            "Pedestrian trigger distance: %.1f m",
+            self._active_ped_trigger_distance(),
+        )
         logger.info("Pedestrian speed: %.1f m/s", self.pedestrian_speed)
         logger.info("Crossing location: %s", self.crossing_location)
         logger.info("Pedestrian start location: %s", self.pedestrian_start_location)
         logger.info("=================================================")
 
     def update(self, step=None, *, allow_trigger=True):
+        super().update(step, allow_trigger=allow_trigger)
+        self._update_pedestrian(step, allow_trigger=allow_trigger)
+
+    def is_llm_needed(self, world_state):
+        if self.llm_queried:
+            return False
+        for actor in world_state.get("nearby_actors", []):
+            if not actor.get("is_scenario_npc"):
+                continue
+            distance = actor.get("distance", 999.0)
+            actor_type = actor.get("type", "")
+            if "walker" in actor_type and distance < 30.0:
+                self.llm_queried = True
+                logger.info(
+                    "Critical pedestrian detected at %.1f m — LLM should decide now.",
+                    distance,
+                )
+                return True
+            if distance < self.llm_trigger_distance_m:
+                self.llm_queried = True
+                return True
+        return False
+
+    def _update_pedestrian(self, step=None, *, allow_trigger=True):
         if step is None:
-            step = self.internal_step
-        self.internal_step += 1
+            step = self.ped_internal_step
+        self.ped_internal_step += 1
 
         ego = self.carla_client.get_ego_vehicle()
         if not ego:
-            logger.error("Ego vehicle not found during update.")
+            logger.error("Ego vehicle not found during pedestrian update.")
             return
         if not self.pedestrian or not self.pedestrian.is_alive:
-            logger.error("Pedestrian missing during update.")
             return
 
         if self.control_ego:
@@ -83,7 +116,7 @@ class Scenario03PedestrianCrossing(BaseScenario):
 
         if not self.pedestrian_started:
             self._stop_pedestrian()
-            if allow_trigger and ego_distance < self._active_trigger_distance():
+            if allow_trigger and ego_distance < self._active_ped_trigger_distance():
                 self.pedestrian_started = True
                 logger.info(
                     "Pedestrian starts crossing now (ego->crossing=%.1fm, ped->crossing=%.1fm).",
@@ -95,28 +128,15 @@ class Scenario03PedestrianCrossing(BaseScenario):
             self._walk_pedestrian()
 
         bucket = int(ego_distance // 5)
-        if bucket != self._last_logged_bucket:
-            self._last_logged_bucket = bucket
+        if bucket != self._ped_last_logged_bucket:
+            self._ped_last_logged_bucket = bucket
             logger.info(
-                "Step=%d | ego->crossing=%.1f m | ped->crossing=%.1f m | ped_started=%s",
+                "Ped step=%d | ego->crossing=%.1f m | ped->crossing=%.1f m | ped_started=%s",
                 step,
                 ego_distance,
                 ped_distance,
                 self.pedestrian_started,
             )
-
-    def is_llm_needed(self, world_state):
-        if self.llm_queried:
-            return False
-        for actor in world_state.get("nearby_actors", []):
-            if actor.get("is_scenario_npc") and actor.get("distance", 999.0) < 30.0:
-                self.llm_queried = True
-                logger.info(
-                    "Critical pedestrian detected at %.1f m — LLM should decide now.",
-                    actor.get("distance"),
-                )
-                return True
-        return False
 
     def _spawn_pedestrian(self):
         blueprint_library = self.world.get_blueprint_library()
@@ -169,10 +189,10 @@ class Scenario03PedestrianCrossing(BaseScenario):
             )
         )
 
-    def _active_trigger_distance(self):
+    def _active_ped_trigger_distance(self):
         if self.control_ego:
-            return self.visual_trigger_distance
-        return self.agent_trigger_distance
+            return self.ped_visual_trigger_distance
+        return self.ped_agent_trigger_distance
 
     def _find_crossing_location(self, ego_vehicle):
         ego_tf = ego_vehicle.get_transform()

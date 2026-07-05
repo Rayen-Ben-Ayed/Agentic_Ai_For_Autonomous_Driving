@@ -48,3 +48,14 @@ def test_path_blocked_no_keep_right_preference():
     state = _base_state(path_blocked=True)
     enrich_keep_right_preference(state)
     assert state["lane_preference_allowed"] is False
+
+
+def test_pedestrian_caution_overrides_lane_preference():
+    state = _base_state(
+        path_blocked=True,
+        too_close_for_follow_lane=True,
+        preferred_caution_action="stop",
+        on_rightmost_lane=True,
+    )
+    enrich_keep_right_preference(state)
+    assert state["preferred_action"] == "stop"

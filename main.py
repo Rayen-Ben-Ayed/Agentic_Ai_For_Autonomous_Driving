@@ -77,6 +77,18 @@ def _load_scenario(scenario_id: str, carla_client):
         from simulation.scenarios.scenario_01_braking import Scenario01Braking
 
         return Scenario01Braking(carla_client)
+    if scenario_id == "4":
+        from simulation.scenarios.scenario_04_multi_car_braking import (
+            Scenario04MultiCarBraking,
+        )
+
+        return Scenario04MultiCarBraking(carla_client)
+    if scenario_id == "5":
+        from simulation.scenarios.scenario_05_multi_car_pedestrian import (
+            Scenario05MultiCarPedestrian,
+        )
+
+        return Scenario05MultiCarPedestrian(carla_client)
     if scenario_id == "2":
         from simulation.scenarios.scenario_02_front_vehicle_braking import (
             Scenario02FrontVehicleBraking,
@@ -116,7 +128,7 @@ def main():
         "--scenario",
         type=str,
         default="1",
-        help="Scenario number to run (1, 2, 3, 6, 7, or 8)",
+        help="Scenario number to run (1, 2, 3, 4, 5, 6, 7, or 8)",
     )
     parser.add_argument(
         "--with-agent",
@@ -274,6 +286,7 @@ def main():
 
             snapshot = world_state.get_state()
             snapshot.update(action_executor.lane_centering_snapshot())
+            snapshot.update(action_executor.junction_snapshot())
             enrich_keep_right_preference(snapshot)
             log_state_snapshot(logger, snapshot, prefix="pre-step")
 

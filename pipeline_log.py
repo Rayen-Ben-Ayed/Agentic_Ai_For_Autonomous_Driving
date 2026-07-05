@@ -28,6 +28,26 @@ def summarize_world_state(state: dict, max_actors: int = 3) -> str:
         f"L_clear={state.get('left_lane_clear')}",
         f"R_clear={state.get('right_lane_clear')}",
         f"rightmost={state.get('on_rightmost_lane')}",
+        *(
+            [
+                "junc={}@{}m opts={} imminent={} committed={}".format(
+                    state.get("junction_kind"),
+                    state.get("junction_distance_m"),
+                    "/".join(
+                        d
+                        for d, ok in (state.get("junction_options") or {}).items()
+                        if ok
+                    )
+                    or "none",
+                    state.get("junction_imminent"),
+                    state.get("junction_committed_direction")
+                    if state.get("junction_committed")
+                    else "no",
+                )
+            ]
+            if state.get("junction_kind")
+            else []
+        ),
         f"pref={state.get('preferred_action')}",
         f"actors={len(state.get('nearby_actors', []))}",
         *(
@@ -38,6 +58,16 @@ def summarize_world_state(state: dict, max_actors: int = 3) -> str:
         *(
             [f"ttc={state['decision_hints']['time_to_contact_s']}s"]
             if (state.get("decision_hints") or {}).get("time_to_contact_s") is not None
+            else []
+        ),
+        *(
+            [f"ped_pred={state.get('pedestrian_conflict_predicted')}"]
+            if state.get("pedestrian_conflict_predicted")
+            else []
+        ),
+        *(
+            [f"caution={state.get('preferred_caution_action')}"]
+            if state.get("preferred_caution_action")
             else []
         ),
         *(

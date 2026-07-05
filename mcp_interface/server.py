@@ -6,6 +6,7 @@ import logging
 
 from pipeline_log import log_stage, summarize_world_state
 from simulation import step_context
+from simulation.junction_planner import ACTION_TO_DIRECTION, JUNCTION_ACTIONS
 from simulation.maneuver_policy import (
     LATERAL_ACTIONS,
     PROACTIVE_ACTIONS,
@@ -23,6 +24,9 @@ DrivingAction = Literal[
     "yield",
     "change_lane_left",
     "change_lane_right",
+    "go_straight",
+    "turn_right",
+    "turn_left",
 ]
 
 logger = logging.getLogger(__name__)
@@ -114,6 +118,73 @@ def _validate_action(action: str, state: dict) -> str | None:
             state,
         )
 
+    if action in JUNCTION_ACTIONS:
+        if not state.get("junction_ahead"):
+            return _reject_action(
+                action, "No junction ahead — junction actions unavailable.", state
+            )
+        if state.get("junction_committed"):
+            committed_dir = state.get("junction_committed_direction")
+            return _reject_action(
+                action,
+                (
+                    f"Direction already committed ({committed_dir}) — no need to "
+                    "re-issue it. Continue with follow_lane/yield/stop (it steers "
+                    "the committed path automatically), or change_lane_* to bail out."
+                ),
+                state,
+            )
+        preferred = state.get("junction_preferred_action")
+        options = state.get("junction_options") or {}
+        if preferred is None:
+            return _reject_action(
+                action,
+                "The junction ahead has no usable exit. Stop before it.",
+                state,
+            )
+        if action != preferred:
+            direction = ACTION_TO_DIRECTION.get(action)
+            lane_note = ""
+            if state.get("on_leftmost_lane") and direction == "right":
+                lane_note = " Right turn is forbidden from the leftmost lane."
+            elif state.get("on_rightmost_lane") and direction == "left":
+                lane_note = " Left turn is forbidden from the rightmost lane."
+            return _reject_action(
+                action,
+                (
+                    f"No usable {direction} exit or a higher-priority lane-legal exit exists "
+                    f"(order: forward > right > left; options={options}; "
+                    f"on_leftmost_lane={state.get('on_leftmost_lane')}, "
+                    f"on_rightmost_lane={state.get('on_rightmost_lane')}).{lane_note} "
+                    f"Use {preferred}."
+                ),
+                state,
+            )
+        if state.get("too_close_for_follow_lane"):
+            return _reject_action(
+                action,
+                f"Hazard {closest}m ahead — yield or stop before turning.",
+                state,
+            )
+
+    # No exit exists at all (dead end / a junction with no usable branch):
+    # only yield/stop can resolve it. An ordinary passable junction does NOT
+    # restrict follow_lane or lane changes — those are handled normally,
+    # tracking whatever direction was (or wasn't yet) committed.
+    no_exit_ahead = (
+        state.get("junction_ahead") and state.get("junction_preferred_action") is None
+    ) or state.get("road_end_ahead")
+    if state.get("junction_imminent") and no_exit_ahead:
+        if action == "follow_lane" or action in LATERAL_ACTIONS:
+            return _reject_action(
+                action,
+                (
+                    "No exit at the upcoming junction/road end — "
+                    f"{action} cannot resolve it. Use yield, then stop."
+                ),
+                state,
+            )
+
     path_blocked = state.get("path_blocked", False)
     if action in PROACTIVE_ACTIONS:
         if not path_blocked and not _lane_preference_allows(action, state):
@@ -176,6 +247,33 @@ def _action_feasibility(action: str, geometry: dict, state: dict) -> dict:
         reasons.append("not in allowed_actions for the current state")
 
     effective_closest = state.get("effective_closest_distance")
+
+    if action in JUNCTION_ACTIONS:
+        if not geometry.get("junction_ahead", False):
+            reasons.append("no junction ahead within detection range")
+        elif not geometry.get("option_available", False):
+            direction = geometry.get("direction")
+            reasons.append(f"the junction ahead has no {direction} exit")
+        if state.get("junction_committed") and not geometry.get("already_committed"):
+            reasons.append(
+                f"direction already committed ({state.get('junction_committed_direction')}); "
+                "use follow_lane/yield/stop instead of re-deciding"
+            )
+        preferred = state.get("junction_preferred_action")
+        if preferred and action != preferred:
+            reasons.append(
+                f"exit priority is forward > right > left among lane-legal exits: use {preferred}"
+            )
+        if (
+            state.get("path_blocked")
+            and effective_closest is not None
+            and geometry.get("junction_distance_m") is not None
+            and effective_closest < geometry["junction_distance_m"]
+        ):
+            reasons.append(
+                f"an obstacle {effective_closest}m ahead blocks the approach "
+                f"to the junction ({geometry['junction_distance_m']}m)"
+            )
 
     if action in LATERAL_ACTIONS:
         if not geometry.get("target_lane_available", False):
@@ -254,6 +352,12 @@ def preview_action(action: DrivingAction) -> str:
             "lane_change_allowed": state.get("lane_change_allowed"),
             "left_lane_clear": state.get("left_lane_clear"),
             "right_lane_clear": state.get("right_lane_clear"),
+            "junction_ahead": state.get("junction_ahead"),
+            "junction_imminent": state.get("junction_imminent"),
+            "junction_options": state.get("junction_options"),
+            "junction_preferred_action": state.get("junction_preferred_action"),
+            "junction_committed": state.get("junction_committed"),
+            "junction_committed_direction": state.get("junction_committed_direction"),
             "allowed_actions": state.get("allowed_actions"),
         },
     }

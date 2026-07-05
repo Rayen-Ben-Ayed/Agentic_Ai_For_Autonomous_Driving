@@ -4,6 +4,7 @@ import carla
 import logging
 
 from pipeline_log import log_stage
+from simulation import junction_planner as jp
 from simulation import lane_change_controller as lcc
 from simulation import lane_controller as lc
 from simulation import maneuver_planner as mp
@@ -48,6 +49,7 @@ class ActionExecutor:
             "yield",
             "change_lane_left",
             "change_lane_right",
+            *jp.JUNCTION_ACTIONS,
         ]
         # After a lateral maneuver, keep steering toward that lane until centered.
         self._centering_side: str | None = None
@@ -58,6 +60,16 @@ class ActionExecutor:
         self._active_action: str | None = None
         self._plan: mp.ManeuverPlan | None = None
         self._centering_plan: mp.ManeuverPlan | None = None
+        # Frozen junction path (approach + connector + exit) and progress index.
+        # Committed once by go_straight/turn_right/turn_left, then persists across
+        # follow_lane/yield/stop steps (they steer along it) until it completes or
+        # a lateral lane change discards it.
+        self._junction_plan: jp.JunctionPlan | None = None
+        self._junction_idx: int = 0
+        # Set in begin_action when a junction action was requested but no connector
+        # exists for that direction (distinguishes "hold a safe stop" from "plan
+        # completed mid-step, drive on normally").
+        self._junction_action_infeasible: bool = False
         self._elapsed_s: float = 0.0
         self._merge_logged: bool = False
         # Telemetry / transparency bookkeeping.
@@ -91,6 +103,19 @@ class ActionExecutor:
         return {
             "lane_centering_incomplete": self.is_lane_centering_active(),
             "lane_centering_side": self._centering_side,
+        }
+
+    def is_junction_committed(self) -> bool:
+        return self._junction_plan is not None
+
+    def junction_snapshot(self) -> dict:
+        """Round-1 junction decision state, so the agent knows to move to round 2
+        (drive with follow_lane/yield/stop/change_lane_*) instead of re-deciding."""
+        return {
+            "junction_committed": self.is_junction_committed(),
+            "junction_committed_direction": (
+                self._junction_plan.direction if self._junction_plan else None
+            ),
         }
 
     def frozen_centering_lat_err_m(self, ego_vehicle) -> float | None:
@@ -233,7 +258,12 @@ class ActionExecutor:
             return None
         dist = distance_m if distance_m is not None else lc.LOOKAHEAD_M
         ahead = waypoint.next(dist)
-        return ahead[0] if ahead else waypoint
+        if not ahead:
+            return waypoint
+        # next() branches at junctions in arbitrary order; hold the
+        # straightest continuation so follow_lane never wanders onto a
+        # random turn connector (turns are explicit junction actions).
+        return jp.straightest_waypoint(ahead, waypoint.transform.rotation.yaw)
 
     def _advance_along_lane(self, waypoint, dist_m: float):
         """Advance ``waypoint`` forward ``dist_m`` along its lane, freezing at junctions.
@@ -583,7 +613,71 @@ class ActionExecutor:
 
         return self._lookahead(base_wp)
 
+    def _junction_path_steer(self, ego_vehicle) -> tuple[float, float] | None:
+        """Steer along the committed junction path.
+
+        Returns None once the path completes so the caller falls back to
+        ordinary lane steering (in the exit lane) for the rest of this tick —
+        this is what lets follow_lane/yield/stop track a committed turn across
+        many steps and then resume plain lane-keeping without a separate
+        "completed" flag.
+        """
+        plan = self._junction_plan
+        ego_tf = ego_vehicle.get_transform()
+        idx = plan.nearest_index(
+            ego_tf.location.x, ego_tf.location.y, self._junction_idx
+        )
+        self._junction_idx = idx
+
+        if plan.is_complete(ego_tf.location.x, ego_tf.location.y, idx):
+            log_stage(
+                logger,
+                "CARLA",
+                "junction %s complete -> exit road=%s lane=%s",
+                plan.action,
+                plan.exit_road_id,
+                plan.exit_lane_id,
+            )
+            self._junction_plan = None
+            self._junction_idx = 0
+            return None
+
+        # Cross-track error is the perpendicular distance to the path at the
+        # NEAREST pose; heading is fed forward from a lookahead pose so the car
+        # anticipates the curve. Measuring lateral error against the lookahead
+        # pose (as before) reports ~1.2 m of offset on a junction-radius curve
+        # even when perfectly on the path, which permanently trips the
+        # "off-path" branch in compute_junction_steer (yaw feed-forward gutted +
+        # a phantom lateral correction) and cuts the corner.
+        near = plan.poses[idx]
+        ref = plan.lookahead_pose(idx)
+        lat_err = lc.lateral_error_m(
+            ego_tf.location.x,
+            ego_tf.location.y,
+            near.x,
+            near.y,
+            near.right_x,
+            near.right_y,
+        )
+        yaw_err = lc.normalize_yaw_error(ref.yaw_deg - ego_tf.rotation.yaw)
+        steer = jp.compute_junction_steer(lat_err, yaw_err)
+        self._last_steer_info = {"yaw_err": yaw_err, "max_steer": jp.JUNCTION_MAX_STEER}
+        return steer, lat_err
+
+    def _apply_junction_speed_cap(self, target_speed: float) -> float:
+        """Cap speed while curving through a committed turn; a straight pass
+        through a junction drives at the normal follow_lane speed."""
+        if self._junction_plan is not None and self._junction_plan.direction != "straight":
+            return min(target_speed, jp.JUNCTION_TURN_SPEED_MPS)
+        return target_speed
+
     def _lane_steer(self, ego_vehicle, action: str) -> tuple[float, float]:
+        if self._junction_plan is not None:
+            result = self._junction_path_steer(ego_vehicle)
+            if result is not None:
+                return result
+            # Plan completed this tick: fall through to ordinary lane steering.
+
         base_wp = self._driving_waypoint(ego_vehicle)
         if self._centering_side and action in ("follow_lane", "yield", "stop"):
             errors = self._frozen_centering_errors(ego_vehicle)
@@ -765,9 +859,32 @@ class ActionExecutor:
         )
         return control, plan.target_speed_mps, lat_err
 
+    def _junction_hold_stop(self, ego_vehicle):
+        """Requested turn is impossible: hold the lane and brake to a stop."""
+        steer, lat_err = self._lane_steer(ego_vehicle, "stop")
+        control = carla.VehicleControl()
+        control.throttle = 0.0
+        control.steer = steer
+        control.brake = 1.0
+        return control, 0.0, lat_err
+
     def _control_for(self, ego_vehicle, action: str, elapsed_s: float):
         """Compute (control, target_speed, lat_err) for the action at this instant."""
         current_speed = self._ego_speed(ego_vehicle)
+
+        if action in jp.JUNCTION_ACTIONS:
+            if self._junction_plan is None and self._junction_action_infeasible:
+                return self._junction_hold_stop(ego_vehicle)
+            # Round 1 (commit) drives exactly like follow_lane: obstacle-aware
+            # speed, steering picked up from the committed path by _lane_steer.
+            steer, lat_err = self._lane_steer(ego_vehicle, action)
+            target_speed = self._apply_junction_speed_cap(
+                self._follow_lane_target(current_speed)
+            )
+            control = self._drive_with_target_speed(
+                ego_vehicle, target_speed, steer, sustain_cruise=True
+            )
+            return control, target_speed, lat_err
 
         if action == "stop":
             steer, lat_err = self._lane_steer(ego_vehicle, action)
@@ -792,8 +909,12 @@ class ActionExecutor:
             return control, target_speed, lat_err
 
         if action == "follow_lane":
+            # Round 2: drives the same whether or not a junction plan is
+            # committed — _lane_steer/_apply_junction_speed_cap pick it up.
             steer, lat_err = self._lane_steer(ego_vehicle, action)
-            target_speed = self._follow_lane_target(current_speed)
+            target_speed = self._apply_junction_speed_cap(
+                self._follow_lane_target(current_speed)
+            )
             control = self._drive_with_target_speed(
                 ego_vehicle, target_speed, steer, sustain_cruise=True
             )
@@ -931,7 +1052,52 @@ class ActionExecutor:
         self._merge_logged = False
         current_speed = self._ego_speed(ego_vehicle)
 
-        if action in ("change_lane_left", "change_lane_right", "overtake"):
+        if action in jp.JUNCTION_ACTIONS:
+            # Round-1 commit: build the path once. If already committed to the
+            # same direction, keep the existing plan (and its progress index)
+            # instead of rebuilding — begin_action can be re-entered for the
+            # same step's initial control application.
+            self._clear_maneuver()
+            direction = jp.ACTION_TO_DIRECTION[action]
+            if self._junction_plan is None or self._junction_plan.direction != direction:
+                self._junction_plan = jp.build_junction_plan(
+                    self._driving_waypoint(ego_vehicle), action
+                )
+                self._junction_idx = 0
+            self._junction_action_infeasible = self._junction_plan is None
+            if self._junction_plan is None:
+                logger.warning(
+                    "No %s connector at the junction ahead; holding a safe stop.",
+                    direction,
+                )
+            else:
+                log_stage(
+                    logger,
+                    "CARLA",
+                    "junction committed action=%s dir=%s entry_d=%.1fm path=%d poses "
+                    "(%.1fm) exit road=%s lane=%s",
+                    action,
+                    self._junction_plan.direction,
+                    self._junction_plan.junction_distance_m,
+                    len(self._junction_plan.poses),
+                    self._junction_plan.cum_s[-1],
+                    self._junction_plan.exit_road_id,
+                    self._junction_plan.exit_lane_id,
+                )
+        elif action in ("change_lane_left", "change_lane_right", "overtake"):
+            # A lateral move changes the source lane, invalidating any committed
+            # junction connector (it was frozen from the old lane); the agent
+            # re-decides direction (round 1) once the lane change completes.
+            if self._junction_plan is not None:
+                log_stage(
+                    logger,
+                    "CARLA",
+                    "junction commitment (%s) discarded by %s",
+                    self._junction_plan.direction,
+                    action,
+                )
+            self._junction_plan = None
+            self._junction_idx = 0
             if (
                 self._current_maneuver == action
                 and self._maneuver_steps >= LANE_CHANGE_MAX_STEPS
@@ -948,6 +1114,8 @@ class ActionExecutor:
                 self._target_lane_id = self._plan.target_lane_id
                 self._centering_plan = self._plan
         else:
+            # follow_lane / yield / stop (round 2): leave a committed junction
+            # plan untouched so these actions keep tracking it across steps.
             self._clear_lateral_tracking()
 
         control, target_speed, lat_err = self._control_for(ego_vehicle, action, 0.0)
@@ -1078,6 +1246,48 @@ class ActionExecutor:
                     "x": round(la.transform.location.x, 2),
                     "y": round(la.transform.location.y, 2),
                 }
+        elif action in jp.JUNCTION_ACTIONS:
+            direction = jp.ACTION_TO_DIRECTION[action]
+            scan = jp.scan_ahead(base_wp) if base_wp else jp.JunctionScan()
+            options = scan.options
+            branch = scan.branches.get(direction)
+            info.update(
+                {
+                    "kind": "junction_turn",
+                    "direction": direction,
+                    "junction_ahead": scan.kind == "junction",
+                    "junction_kind": scan.kind,
+                    "junction_distance_m": scan.distance_m,
+                    "junction_options": options,
+                    "junction_preferred_action": (
+                        jp.preferred_junction_action(options)
+                        if scan.kind == "junction"
+                        else None
+                    ),
+                    "option_available": bool(branch),
+                    "target_speed_mps": round(jp.JUNCTION_TURN_SPEED_MPS, 2),
+                    "already_committed": (
+                        self._junction_plan is not None
+                        and self._junction_plan.direction == direction
+                    ),
+                    "committed_direction": (
+                        self._junction_plan.direction if self._junction_plan else None
+                    ),
+                }
+            )
+            if branch:
+                exit_wp = branch[-1]
+                info.update(
+                    {
+                        "exit_road_id": exit_wp.road_id,
+                        "exit_lane_id": exit_wp.lane_id,
+                        "exit_yaw": round(exit_wp.transform.rotation.yaw, 2),
+                        "exit_waypoint": {
+                            "x": round(exit_wp.transform.location.x, 2),
+                            "y": round(exit_wp.transform.location.y, 2),
+                        },
+                    }
+                )
         elif action == "follow_lane":
             info.update(
                 {

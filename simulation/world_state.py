@@ -4,7 +4,12 @@ import os
 import carla
 
 from simulation import step_context
+from simulation.junction_planner import junction_state, lane_aware_junction_preferred_action
 from simulation.maneuver_policy import compute_allowed_actions, evaluate_maneuver_policy
+from simulation.pedestrian_prediction import (
+    assess_nearest_pedestrian_conflict,
+    choose_pedestrian_caution_action,
+)
 
 _IN_LANE_LATERAL_M = 2.5
 _LEFT_LANE_RANGE = (-4.5, -1.2)
@@ -213,6 +218,7 @@ def _enrich_with_ego_frame(
 ) -> None:
     forward = ego_transform.get_forward_vector()
     right = ego_transform.get_right_vector()
+    ego_yaw_deg = ego_transform.rotation.yaw
 
     obstacle_ahead = False
     closest_ahead = None
@@ -231,9 +237,17 @@ def _enrich_with_ego_frame(
         longitudinal = rel_x * forward.x + rel_y * forward.y
         lateral = rel_x * right.x + rel_y * right.y
 
+        velocity = actor.get("velocity") or {}
+        vx = float(velocity.get("x") or 0.0)
+        vy = float(velocity.get("y") or 0.0)
+        longitudinal_vel = vx * forward.x + vy * forward.y
+        lateral_vel = vx * right.x + vy * right.y
+
         actor["ego_frame"] = {
             "longitudinal_m": round(longitudinal, 2),
             "lateral_m": round(lateral, 2),
+            "longitudinal_vel_mps": round(longitudinal_vel, 2),
+            "lateral_vel_mps": round(lateral_vel, 2),
         }
         actor["is_scenario_npc"] = actor.get("id") in scenario_ids
         actor["is_stationary"] = actor.get("speed", 0.0) < _STATIONARY_SPEED_MPS
@@ -295,6 +309,27 @@ def _enrich_with_ego_frame(
     state["left_lane_clear"] = left_lane_available and not left_blocked
     state["right_lane_clear"] = right_lane_available and not right_blocked
 
+    pedestrian_scan = assess_nearest_pedestrian_conflict(
+        state.get("nearby_actors", []),
+        ego_yaw_deg=ego_yaw_deg,
+        ego_speed_mps=ego_speed_m_s,
+        follow_safe_distance_m=0.0,
+        too_close_for_follow_lane=False,
+    )
+    if pedestrian_scan.get("pedestrian_conflict_ahead"):
+        ped_dist = pedestrian_scan.get("closest_pedestrian_conflict_m")
+        if ped_dist is not None:
+            obstacle_ahead = True
+            if closest_ahead is None or ped_dist < closest_ahead:
+                closest_ahead = ped_dist
+            conflict_actor_id = (pedestrian_scan.get("pedestrian_conflict") or {}).get(
+                "actor_id"
+            )
+            if conflict_actor_id in scenario_ids:
+                scenario_obstacle_ahead = True
+                if closest_scenario is None or ped_dist < closest_scenario:
+                    closest_scenario = ped_dist
+
     maneuver_obstacle = obstacle_ahead or scenario_obstacle_ahead
     maneuver_closest = closest_scenario if closest_scenario is not None else closest_ahead
 
@@ -307,9 +342,38 @@ def _enrich_with_ego_frame(
     )
     state.update(policy)
 
+    preferred_caution_action = None
+    if pedestrian_scan.get("pedestrian_conflict_ahead") and state.get(
+        "too_close_for_follow_lane"
+    ):
+        ped_conflict = pedestrian_scan.get("pedestrian_conflict") or {}
+        ped_dist = pedestrian_scan.get("closest_pedestrian_conflict_m")
+        if ped_dist is not None:
+            preferred_caution_action = choose_pedestrian_caution_action(
+                effective_closest_m=float(ped_dist),
+                ego_speed_mps=ego_speed_m_s,
+                follow_safe_distance_m=float(state.get("follow_safe_distance_m") or 0.0),
+                time_to_lane_entry_s=ped_conflict.get("time_to_lane_entry_s"),
+                in_lane=bool(ped_conflict.get("in_lane")),
+            )
+    state["preferred_caution_action"] = preferred_caution_action
+    state.update(
+        {
+            k: pedestrian_scan[k]
+            for k in (
+                "pedestrian_conflict_ahead",
+                "pedestrian_conflict_predicted",
+                "pedestrian_conflict",
+                "closest_pedestrian_conflict_m",
+            )
+            if k in pedestrian_scan
+        }
+    )
+
     lead_vehicle = _build_lead_vehicle(state.get("nearby_actors", []))
     state["lead_vehicle"] = lead_vehicle
 
+    ped_conflict = state.get("pedestrian_conflict") or {}
     state["decision_hints"] = {
         "too_close_for_follow_lane": state.get("too_close_for_follow_lane"),
         "prefer_yield_or_stop": state.get("prefer_yield_or_stop"),
@@ -320,6 +384,10 @@ def _enrich_with_ego_frame(
         "time_to_contact_s": (
             lead_vehicle.get("time_to_contact_s") if lead_vehicle else None
         ),
+        "pedestrian_conflict_ahead": state.get("pedestrian_conflict_ahead"),
+        "pedestrian_conflict_predicted": state.get("pedestrian_conflict_predicted"),
+        "preferred_caution_action": state.get("preferred_caution_action"),
+        "pedestrian_time_to_lane_entry_s": ped_conflict.get("time_to_lane_entry_s"),
     }
 
     state["allowed_actions"] = compute_allowed_actions(state, stuck=False)
@@ -403,6 +471,11 @@ class WorldStateExtractor:
                 "speed": round(actor_speed, 2),
                 "is_stationary": actor_speed < _STATIONARY_SPEED_MPS,
                 "closing_speed": round(closing_speed, 2),
+                "velocity": {
+                    "x": round(actor_velocity.x, 2),
+                    "y": round(actor_velocity.y, 2),
+                    "z": round(actor_velocity.z, 2),
+                },
                 "same_road": lane_info["same_road"],
                 "same_lane": lane_info["same_lane"],
                 "lane_relation": lane_info["lane_relation"],
@@ -420,8 +493,11 @@ class WorldStateExtractor:
         nearby_actors.sort(key=lambda actor: actor["distance"])
         nearby_actors = nearby_actors[: self.max_actors]
 
+        on_leftmost_lane = not left_lane_available
+
         state = {
             "detection_radius_m": self.detection_radius,
+            "on_leftmost_lane": on_leftmost_lane,
             "on_rightmost_lane": on_rightmost_lane,
             "ego_vehicle": {
                 "id": ego_vehicle.id,
@@ -438,10 +514,21 @@ class WorldStateExtractor:
                 "waypoint": ego_wp_info,
                 "left_lane_available": left_lane_available,
                 "right_lane_available": right_lane_available,
+                "on_leftmost_lane": on_leftmost_lane,
                 "on_rightmost_lane": on_rightmost_lane,
             },
             "nearby_actors": nearby_actors,
         }
+
+        # Junction flags must be set before _enrich_with_ego_frame: the
+        # allowed-actions computation there gates turn actions on them.
+        state.update(junction_state(carla_map, ego_transform.location, ego_speed))
+        if state.get("junction_ahead"):
+            state["junction_preferred_action"] = lane_aware_junction_preferred_action(
+                state.get("junction_options"),
+                on_leftmost_lane=on_leftmost_lane,
+                on_rightmost_lane=on_rightmost_lane,
+            )
 
         _enrich_with_ego_frame(
             state,

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Optional
 
 from agent.prompt_templates import get_decision_prompt, get_system_prompt
@@ -17,11 +18,38 @@ VALID_ACTIONS = frozenset({
     "yield",
     "change_lane_left",
     "change_lane_right",
+    "go_straight",
+    "turn_right",
+    "turn_left",
 })
 
 # After this many rejected actions in one step, stop deliberating and force a
 # safe stop instead of burning more (slow) LLM rounds on the same dead end.
 MAX_REJECTIONS_BEFORE_STOP = 2
+
+
+def _extract_action(content: str | None) -> Optional[str]:
+    """Best-effort recovery of the intended action from a plain-text reply.
+
+    Function-calling models sometimes emit the final decision as content (e.g.
+    ``{"action": "follow_lane"}``) instead of an ``execute_action`` tool call.
+    Prefer an explicit JSON ``action`` field; fall back to a whole-word scan.
+    Returns a valid action name or None.
+    """
+    if not content:
+        return None
+    try:
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            action = parsed.get("action")
+            if isinstance(action, str) and action in VALID_ACTIONS:
+                return action
+    except (json.JSONDecodeError, TypeError):
+        pass
+    for action in VALID_ACTIONS:
+        if re.search(rf"\b{re.escape(action)}\b", content):
+            return action
+    return None
 
 
 class DecisionMaker:
@@ -74,6 +102,36 @@ class DecisionMaker:
 
             if not response_message.tool_calls:
                 logger.info("LLM response without tool call: %s", response_message.content)
+                # The model stated its decision as text instead of calling
+                # execute_action. Try to honor it (still gated by MCP preview /
+                # allowed_actions) rather than slamming a hard stop on a clear
+                # road; only fall back to stop when nothing valid can be applied.
+                recovered = _extract_action(response_message.content)
+                if recovered:
+                    result_text = await self.mcp_client.call_tool(
+                        "execute_action", {"action": recovered}
+                    )
+                    try:
+                        result = json.loads(result_text)
+                    except json.JSONDecodeError:
+                        result = {}
+                    if result.get("status") == "success":
+                        log_stage(
+                            logger, "agent", "recovered text action -> %s", recovered
+                        )
+                        return recovered
+                if round_idx < MAX_LLM_TOOL_ROUNDS:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "You did not call a tool. Call execute_action with "
+                                "your chosen action (after preview_action). Do not "
+                                "reply in plain text."
+                            ),
+                        }
+                    )
+                    continue
                 return await self._force_safe_stop("LLM produced no tool call")
 
             assistant_message: dict[str, Any] = {

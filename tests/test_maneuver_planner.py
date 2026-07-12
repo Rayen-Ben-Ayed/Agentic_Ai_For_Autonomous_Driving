@@ -46,10 +46,8 @@ def test_merge_target_speed_holds_speed_no_hard_brake():
     # A lane change at 10 m/s should hold ~speed, not brake to a crawl.
     ts = mp.merge_target_speed_mps(
         10.0,
-        overtake=False,
         max_speed_mps=8.0,
         min_from_rest_mps=3.5,
-        overtake_factor=1.1,
         stationary_speed_mps=0.5,
     )
     assert ts >= 8.0 - 1e-9  # capped at max, never a hard decel target
@@ -60,25 +58,11 @@ def test_merge_target_speed_has_min_floor():
     # real lateral travel within the merge distance.
     ts = mp.merge_target_speed_mps(
         1.0,
-        overtake=False,
         max_speed_mps=8.0,
         min_from_rest_mps=3.5,
-        overtake_factor=1.1,
         stationary_speed_mps=0.5,
     )
     assert ts == mp.MERGE_MIN_SPEED_MPS
-
-
-def test_overtake_allows_modest_bump():
-    ts = mp.merge_target_speed_mps(
-        6.0,
-        overtake=True,
-        max_speed_mps=8.0,
-        min_from_rest_mps=3.5,
-        overtake_factor=1.1,
-        stationary_speed_mps=0.5,
-    )
-    assert ts >= 6.0
 
 
 def test_plan_fraction_progression():

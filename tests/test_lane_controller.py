@@ -95,3 +95,27 @@ def test_centering_steer_sign_when_right_of_lane():
         min_steer=0.05,
     )
     assert steer < -0.04
+
+
+def test_curve_off_center_plain_steer_steers_wrong_way():
+    """debug1007_01 step-16: +3.4m lat, +15° yaw — plain follow steers right."""
+    plain = compute_steer(
+        3.38,
+        15.0,
+        lat_gain=0.045,
+        yaw_gain=0.016,
+        max_steer=0.097,
+    )
+    assert plain > 0.05
+
+    centered = compute_centering_steer(
+        3.38,
+        15.0,
+        lat_gain=0.045,
+        yaw_gain=0.028,
+        max_steer=0.28,
+        lat_tolerance_m=0.7,
+        min_steer=0.05,
+    )
+    assert centered < -0.05
+    assert centered * plain < 0  # opposite sign — recovery vs drift

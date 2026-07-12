@@ -92,21 +92,15 @@ def merge_distance_m(speed_mps: float, duration_s: float) -> float:
 def merge_target_speed_mps(
     current_speed_mps: float,
     *,
-    overtake: bool,
     max_speed_mps: float,
     min_from_rest_mps: float,
-    overtake_factor: float,
     stationary_speed_mps: float,
 ) -> float:
     """Speed held through the merge.
 
-    The key fix vs. the old behaviour: a lane change holds speed instead of
-    hard-braking. Only ``overtake`` is allowed a modest bump.
+    A lane change holds speed instead of hard-braking.
     """
     floor = min(max_speed_mps, MERGE_MIN_SPEED_MPS)
-    if overtake and current_speed_mps >= stationary_speed_mps:
-        boosted = min(max_speed_mps, current_speed_mps * overtake_factor)
-        return max(current_speed_mps, boosted, floor)
     if current_speed_mps < stationary_speed_mps:
         # Ease off the line rather than sitting still mid-merge.
         return max(min_from_rest_mps * 0.7, floor)

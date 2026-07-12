@@ -34,16 +34,19 @@ class MCPDrivingClient:
     Routes LLM tool calls through the FastMCP server (get_world_state, execute_action).
     """
 
-    def __init__(self, mcp_server=mcp, verbose_state: bool = False):
+    def __init__(self, mcp_server=mcp, verbose_state: bool = False, benchmark_collector=None):
         self._mcp = mcp_server
         self._openai_tools: Optional[list[dict]] = None
         self._verbose_state = verbose_state
+        self._benchmark_collector = benchmark_collector
 
     async def list_tools(self):
         return await self._mcp.list_tools()
 
     async def call_tool(self, name: str, arguments: Optional[dict] = None) -> str:
         arguments = arguments or {}
+        if self._benchmark_collector is not None:
+            self._benchmark_collector.record_mcp_tool_call(name, arguments)
         log_stage(logger, "MCP-client", "call_tool %s(%s)", name, arguments)
         result = await self._mcp.call_tool(name, arguments)
         text = _tool_result_to_text(result)

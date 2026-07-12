@@ -1,5 +1,5 @@
 """
-Speed- and latency-aware rules for when proactive maneuvers (lane change, overtake) make sense.
+Speed- and latency-aware rules for when proactive maneuvers (lane change) make sense.
 """
 import os
 from typing import Optional
@@ -23,7 +23,6 @@ STUCK_SPEED_MPS = float(os.getenv("STUCK_SPEED_MPS", "0.5"))
 STUCK_COLLISION_DELTA = int(os.getenv("STUCK_COLLISION_DELTA", "5"))
 
 ALL_DRIVING_ACTIONS = (
-    "overtake",
     "follow_lane",
     "stop",
     "yield",
@@ -33,7 +32,6 @@ ALL_DRIVING_ACTIONS = (
 )
 
 LATERAL_ACTIONS = frozenset({
-    "overtake",
     "change_lane_left",
     "change_lane_right",
 })
@@ -161,7 +159,7 @@ def is_action_allowed(action: str, state: dict, *, stuck: bool = False) -> bool:
     if stuck:
         return action in allowed_actions_when_stuck()
 
-    # A pedestrian is crossing the ego path. A lane change/overtake cannot escape
+    # A pedestrian is crossing the ego path. A lane change cannot escape
     # a walker crossing the whole carriageway — it only leaves the ego misaligned
     # (which then whips the junction tracker off-road). Force the braking
     # response: yield/stop only, until the crossing clears.
@@ -241,10 +239,6 @@ def is_action_allowed(action: str, state: dict, *, stuck: bool = False) -> bool:
     if action == "change_lane_left" and not _adjacent_lane_action_clear("change_lane_left", state):
         return False
     if action == "change_lane_right" and not _adjacent_lane_action_clear("change_lane_right", state):
-        return False
-    if action == "overtake" and not (
-        state.get("left_lane_clear") or state.get("right_lane_clear")
-    ):
         return False
 
     return True

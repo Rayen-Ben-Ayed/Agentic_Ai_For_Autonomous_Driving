@@ -33,7 +33,6 @@ _default_lane_change_steps = max(1, round(12.0 / STEP_INTERVAL_S))
 LANE_CHANGE_MAX_STEPS = int(
     os.getenv("LANE_CHANGE_MAX_STEPS", str(_default_lane_change_steps))
 )
-OVERTAKE_SPEED_FACTOR = float(os.getenv("OVERTAKE_SPEED_FACTOR", "1.1"))
 # Step used to walk a frozen lane anchor forward without letting waypoint.next()
 # pick an arbitrary junction connector (which corrupts the merge reference).
 LANE_ADVANCE_STEP_M = float(os.getenv("LANE_ADVANCE_STEP_M", "2.0"))
@@ -43,7 +42,6 @@ class ActionExecutor:
     def __init__(self, carla_client):
         self.carla_client = carla_client
         self.valid_actions = [
-            "overtake",
             "follow_lane",
             "stop",
             "yield",
@@ -490,15 +488,28 @@ class ActionExecutor:
             heading_tf.rotation.yaw - ego_tf.rotation.yaw
         )
         speed = self._ego_speed(ego_vehicle)
-        max_steer = lc.speed_scaled_max_steer(speed, lane_change=lane_change)
-        steer = lc.compute_steer(
-            lat_err,
-            yaw_err,
-            lat_gain=lat_gain,
-            yaw_gain=yaw_gain,
-            max_steer=max_steer,
-            lateral_weight=lc.lateral_weight_for_yaw(yaw_err),
-        )
+        off_center = not lane_change and abs(lat_err) > lc.CENTER_TOLERANCE_M
+        if off_center:
+            # On curves, plain P+D yaw/lat terms can cancel (debug1007_01 step 16:
+            # lat=+3.4m right of lane but yaw feed-forward steered further right).
+            max_steer = lc.speed_scaled_max_steer(speed, lane_change=True)
+            steer = lc.compute_centering_steer(
+                lat_err,
+                yaw_err,
+                lat_gain=lc.CENTER_LAT_GAIN,
+                yaw_gain=lc.CENTER_YAW_GAIN,
+                max_steer=max_steer,
+            )
+        else:
+            max_steer = lc.speed_scaled_max_steer(speed, lane_change=lane_change)
+            steer = lc.compute_steer(
+                lat_err,
+                yaw_err,
+                lat_gain=lat_gain,
+                yaw_gain=yaw_gain,
+                max_steer=max_steer,
+                lateral_weight=lc.lateral_weight_for_yaw(yaw_err),
+            )
         self._last_steer_info = {"yaw_err": yaw_err, "max_steer": max_steer}
         return steer, lat_err
 
@@ -589,9 +600,6 @@ class ActionExecutor:
         elif action == "change_lane_right":
             self._centering_side = "right"
             self._current_maneuver = "change_lane_right"
-        elif action == "overtake":
-            self._centering_side = "left"
-            self._current_maneuver = "overtake"
         self._maneuver_steps += 1
 
     def _target_waypoint(self, ego_vehicle, action: str):
@@ -600,8 +608,6 @@ class ActionExecutor:
             return self._adjacent_lane_waypoint(base_wp, "left")
         if action == "change_lane_right":
             return self._adjacent_lane_waypoint(base_wp, "right")
-        if action == "overtake":
-            return self._adjacent_lane_waypoint(base_wp, "left")
 
         if self._centering_side and action in ("follow_lane", "yield", "stop"):
             heading_wp = self._centering_waypoint(ego_vehicle)
@@ -703,21 +709,20 @@ class ActionExecutor:
 
         heading_wp = self._target_waypoint(ego_vehicle, action)
         lane_wp = base_wp
-        if action in ("change_lane_left", "change_lane_right", "overtake"):
+        if action in ("change_lane_left", "change_lane_right"):
             lane_wp = heading_wp or base_wp
         steer, lat_err = self._steer_toward_waypoint(
             ego_vehicle,
             lane_wp,
             heading_wp or base_wp,
-            lane_change=action
-            in ("change_lane_left", "change_lane_right", "overtake"),
+            lane_change=action in ("change_lane_left", "change_lane_right"),
         )
         return steer, lat_err
 
     def _build_lane_change_plan(self, ego_vehicle, action: str) -> mp.ManeuverPlan:
         """Resolve a lane change into a time/distance-parameterized merge plan."""
         current_speed = self._ego_speed(ego_vehicle)
-        side = "left" if action in ("change_lane_left", "overtake") else "right"
+        side = "left" if action == "change_lane_left" else "right"
         base_wp = self._driving_waypoint(ego_vehicle)
         lane_width = base_wp.lane_width if base_wp else mp.DEFAULT_LANE_WIDTH_M
         adj = self._adjacent_lane_waypoint_raw(base_wp, side) if base_wp else None
@@ -725,10 +730,8 @@ class ActionExecutor:
         duration = mp.merge_duration_s(lane_width, STEP_INTERVAL_S)
         target_speed = mp.merge_target_speed_mps(
             current_speed,
-            overtake=(action == "overtake"),
             max_speed_mps=DEFAULT_MAX_SPEED_MPS,
             min_from_rest_mps=MIN_FOLLOW_FROM_REST_MPS,
-            overtake_factor=OVERTAKE_SPEED_FACTOR,
             stationary_speed_mps=STATIONARY_SPEED_MPS,
         )
         distance = mp.merge_distance_m(target_speed, duration)
@@ -920,7 +923,7 @@ class ActionExecutor:
             )
             return control, target_speed, lat_err
 
-        if action in ("change_lane_left", "change_lane_right", "overtake"):
+        if action in ("change_lane_left", "change_lane_right"):
             return self._lane_change_control(ego_vehicle, action, elapsed_s)
 
         logger.error("Unhandled action: %s", action)
@@ -1084,7 +1087,7 @@ class ActionExecutor:
                     self._junction_plan.exit_road_id,
                     self._junction_plan.exit_lane_id,
                 )
-        elif action in ("change_lane_left", "change_lane_right", "overtake"):
+        elif action in ("change_lane_left", "change_lane_right"):
             # A lateral move changes the source lane, invalidating any committed
             # junction connector (it was frozen from the old lane); the agent
             # re-decides direction (round 1) once the lane change completes.
@@ -1209,16 +1212,14 @@ class ActionExecutor:
             "lane_width_m": round(lane_width, 2),
         }
 
-        if action in ("change_lane_left", "change_lane_right", "overtake"):
-            side = "left" if action in ("change_lane_left", "overtake") else "right"
+        if action in ("change_lane_left", "change_lane_right"):
+            side = "left" if action == "change_lane_left" else "right"
             adj = self._adjacent_lane_waypoint_raw(base_wp, side) if base_wp else None
             duration = mp.merge_duration_s(lane_width, STEP_INTERVAL_S)
             target_speed = mp.merge_target_speed_mps(
                 current_speed,
-                overtake=(action == "overtake"),
                 max_speed_mps=DEFAULT_MAX_SPEED_MPS,
                 min_from_rest_mps=MIN_FOLLOW_FROM_REST_MPS,
-                overtake_factor=OVERTAKE_SPEED_FACTOR,
                 stationary_speed_mps=STATIONARY_SPEED_MPS,
             )
             distance = mp.merge_distance_m(target_speed, duration)

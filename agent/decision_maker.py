@@ -12,7 +12,6 @@ from simulation.timing_config import MAX_LLM_TOOL_ROUNDS
 logger = logging.getLogger(__name__)
 
 VALID_ACTIONS = frozenset({
-    "overtake",
     "follow_lane",
     "stop",
     "yield",
@@ -53,9 +52,10 @@ def _extract_action(content: str | None) -> Optional[str]:
 
 
 class DecisionMaker:
-    def __init__(self, llm_client, mcp_client: MCPDrivingClient):
+    def __init__(self, llm_client, mcp_client: MCPDrivingClient, benchmark_collector=None):
         self.llm_client = llm_client
         self.mcp_client = mcp_client
+        self._benchmark_collector = benchmark_collector
 
     def run_step(self) -> Optional[str]:
         """
@@ -78,6 +78,8 @@ class DecisionMaker:
         except json.JSONDecodeError:
             result = {}
         if result.get("status") == "success":
+            if self._benchmark_collector is not None:
+                self._benchmark_collector.record_action_acceptance("stop")
             return "stop"
         logger.error("Safe-stop fallback did not apply: %s", result_text)
         return None
@@ -116,10 +118,14 @@ class DecisionMaker:
                     except json.JSONDecodeError:
                         result = {}
                     if result.get("status") == "success":
+                        if self._benchmark_collector is not None:
+                            self._benchmark_collector.record_action_acceptance(recovered)
                         log_stage(
                             logger, "agent", "recovered text action -> %s", recovered
                         )
                         return recovered
+                    if self._benchmark_collector is not None:
+                        self._benchmark_collector.record_action_rejection(recovered)
                 if round_idx < MAX_LLM_TOOL_ROUNDS:
                     messages.append(
                         {
@@ -174,11 +180,15 @@ class DecisionMaker:
                     except json.JSONDecodeError:
                         result = {}
                     if result.get("status") == "success" and action in VALID_ACTIONS:
+                        if self._benchmark_collector is not None and action:
+                            self._benchmark_collector.record_action_acceptance(action)
                         log_stage(logger, "agent", "step complete -> %s", action)
                         executed_action = action
                         break
                     elif result.get("status") == "rejected":
                         rejection_count += 1
+                        if self._benchmark_collector is not None and action:
+                            self._benchmark_collector.record_action_rejection(action)
                         log_stage(
                             logger,
                             "agent",

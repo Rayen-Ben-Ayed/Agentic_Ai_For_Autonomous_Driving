@@ -27,7 +27,6 @@ def test_pedestrian_caution_forbids_lane_changes():
     }
     assert compute_allowed_actions(state) == ["stop", "yield"]
     assert is_action_allowed("change_lane_right", state) is False
-    assert is_action_allowed("overtake", state) is False
     assert is_action_allowed("go_straight", state) is False
     assert is_action_allowed("stop", state) is True
     assert is_action_allowed("yield", state) is True

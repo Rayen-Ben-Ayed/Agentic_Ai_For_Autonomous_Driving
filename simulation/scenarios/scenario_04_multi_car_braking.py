@@ -413,7 +413,7 @@ class Scenario04MultiCarBraking(BaseScenario):
         )
         if escape_side:
             logger.info(
-                "Escape route: change_lane_%s / overtake when safe.",
+                "Escape route: change_lane_%s when safe.",
                 escape_side,
             )
         logger.info("=================================================")

@@ -18,7 +18,6 @@ from simulation.lane_change_controller import LANE_CHANGE_LEAD_MARGIN_M, merge_l
 from simulation import lane_controller as lc
 
 DrivingAction = Literal[
-    "overtake",
     "follow_lane",
     "stop",
     "yield",
@@ -223,10 +222,6 @@ def _validate_action(action: str, state: dict) -> str | None:
         return _reject_action(action, "left_lane_clear is false.", state)
     if action == "change_lane_right" and not state.get("right_lane_clear"):
         return _reject_action(action, "right_lane_clear is false.", state)
-    if action == "overtake" and not (
-        state.get("left_lane_clear") or state.get("right_lane_clear")
-    ):
-        return _reject_action(action, "Both adjacent lanes blocked.", state)
 
     return _reject_action(action, "Action not allowed in current state.", state)
 

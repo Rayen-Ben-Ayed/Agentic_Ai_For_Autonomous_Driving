@@ -207,7 +207,7 @@ class Scenario07BlockedLaneClearLeft(BaseScenario):
         logger.info("=================================================")
         logger.info("SCENARIO 07: BLOCKED LANE, LEFT LANE CLEAR")
         logger.info("No-agent: ego drives into the stopped vehicle.")
-        logger.info("Agent: expected response is change_lane_left/overtake if safe.")
+        logger.info("Agent: expected response is change_lane_left if safe.")
         logger.info("=================================================")
 
     def update(self, step=None, *, allow_trigger=True):

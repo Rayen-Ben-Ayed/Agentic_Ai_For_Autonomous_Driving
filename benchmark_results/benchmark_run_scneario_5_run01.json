@@ -1,0 +1,1699 @@
+{
+  "scenario": "5",
+  "repeats": 5,
+  "llm_provider": "rwth",
+  "llm_model": "gpt-oss-120b",
+  "completed_runs": 5,
+  "successful_runs": 5,
+  "failed_runs": 0,
+  "safety": {
+    "collision_free_rate": 1.0,
+    "avg_collision_events": 0.0,
+    "avg_contact_substeps": 0.0
+  },
+  "decision_time_ms": {
+    "mean": 4605.95,
+    "min": 2347.73,
+    "max": 13868.72,
+    "p95": 9373.89
+  },
+  "llm_response_time_ms": {
+    "mean": 4583.71,
+    "min": 2326.33,
+    "max": 13845.86,
+    "p95": 9353.73
+  },
+  "mcp_tool_calls_per_decision": {
+    "mean": 3.01,
+    "min": 3.0,
+    "max": 4.0,
+    "p95": 3.0
+  },
+  "llm_calls_per_decision": {
+    "mean": 3.01,
+    "min": 3.0,
+    "max": 4.0,
+    "p95": 3.0
+  },
+  "token_usage": {
+    "total_prompt_tokens": 1137757,
+    "total_completion_tokens": 42480,
+    "total_tokens": 1180237,
+    "avg_tokens_per_decision": 14752.96,
+    "note": "Token counts are reported when the provider returns usage metadata (Groq/Cerebras/OpenAI-compatible). Ollama/Gemini may report 0."
+  },
+  "actions": {
+    "total_acceptances": 80,
+    "total_rejections": 0,
+    "acceptance_rate": 1.0
+  },
+  "determinism": {
+    "comparable_runs": 5,
+    "fully_identical_sequences": true,
+    "unique_sequences": 1,
+    "per_step_agreement": {
+      "1": {
+        "mode_action": "change_lane_left",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "change_lane_left": 5
+        }
+      },
+      "2": {
+        "mode_action": "yield",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "yield": 5
+        }
+      },
+      "3": {
+        "mode_action": "stop",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "stop": 5
+        }
+      },
+      "4": {
+        "mode_action": "go_straight",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "go_straight": 5
+        }
+      },
+      "5": {
+        "mode_action": "follow_lane",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "follow_lane": 5
+        }
+      },
+      "6": {
+        "mode_action": "follow_lane",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "follow_lane": 5
+        }
+      },
+      "7": {
+        "mode_action": "go_straight",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "go_straight": 5
+        }
+      },
+      "8": {
+        "mode_action": "follow_lane",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "follow_lane": 5
+        }
+      },
+      "9": {
+        "mode_action": "change_lane_right",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "change_lane_right": 5
+        }
+      },
+      "10": {
+        "mode_action": "turn_right",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "turn_right": 5
+        }
+      },
+      "11": {
+        "mode_action": "follow_lane",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "follow_lane": 5
+        }
+      },
+      "12": {
+        "mode_action": "follow_lane",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "follow_lane": 5
+        }
+      },
+      "13": {
+        "mode_action": "follow_lane",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "follow_lane": 5
+        }
+      },
+      "14": {
+        "mode_action": "turn_right",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "turn_right": 5
+        }
+      },
+      "15": {
+        "mode_action": "follow_lane",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "follow_lane": 5
+        }
+      },
+      "16": {
+        "mode_action": "go_straight",
+        "agreement_rate": 1.0,
+        "action_counts": {
+          "go_straight": 5
+        }
+      }
+    },
+    "sequences": [
+      [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ]
+    ]
+  },
+  "runs": [
+    {
+      "scenario": "5",
+      "run_index": 1,
+      "success": true,
+      "collision_events": 0,
+      "total_contact_substeps": 0,
+      "first_collision_with": null,
+      "rule_violations": 0,
+      "decisions": [
+        {
+          "step": 1,
+          "action": "change_lane_left",
+          "decision_time_ms": 6282.08,
+          "llm_calls": 3,
+          "llm_response_time_ms": 6229.56,
+          "llm_prompt_tokens": 14560,
+          "llm_completion_tokens": 497,
+          "llm_total_tokens": 15057,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_left"
+          ]
+        },
+        {
+          "step": 2,
+          "action": "yield",
+          "decision_time_ms": 5524.89,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5508.08,
+          "llm_prompt_tokens": 14420,
+          "llm_completion_tokens": 710,
+          "llm_total_tokens": 15130,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "yield"
+          ]
+        },
+        {
+          "step": 3,
+          "action": "stop",
+          "decision_time_ms": 4783.43,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4767.4,
+          "llm_prompt_tokens": 14412,
+          "llm_completion_tokens": 568,
+          "llm_total_tokens": 14980,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "stop"
+          ]
+        },
+        {
+          "step": 4,
+          "action": "go_straight",
+          "decision_time_ms": 3217.72,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3196.5,
+          "llm_prompt_tokens": 14289,
+          "llm_completion_tokens": 323,
+          "llm_total_tokens": 14612,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 5,
+          "action": "follow_lane",
+          "decision_time_ms": 3552.96,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3536.67,
+          "llm_prompt_tokens": 14196,
+          "llm_completion_tokens": 415,
+          "llm_total_tokens": 14611,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 6,
+          "action": "follow_lane",
+          "decision_time_ms": 5714.16,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5699.3,
+          "llm_prompt_tokens": 14176,
+          "llm_completion_tokens": 740,
+          "llm_total_tokens": 14916,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 7,
+          "action": "go_straight",
+          "decision_time_ms": 2532.71,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2512.34,
+          "llm_prompt_tokens": 15090,
+          "llm_completion_tokens": 274,
+          "llm_total_tokens": 15364,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 8,
+          "action": "follow_lane",
+          "decision_time_ms": 4209.46,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4193.35,
+          "llm_prompt_tokens": 14283,
+          "llm_completion_tokens": 519,
+          "llm_total_tokens": 14802,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 9,
+          "action": "change_lane_right",
+          "decision_time_ms": 5120.66,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5104.41,
+          "llm_prompt_tokens": 14371,
+          "llm_completion_tokens": 526,
+          "llm_total_tokens": 14897,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_right"
+          ]
+        },
+        {
+          "step": 10,
+          "action": "turn_right",
+          "decision_time_ms": 2864.55,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2846.06,
+          "llm_prompt_tokens": 14055,
+          "llm_completion_tokens": 329,
+          "llm_total_tokens": 14384,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 11,
+          "action": "follow_lane",
+          "decision_time_ms": 10480.78,
+          "llm_calls": 3,
+          "llm_response_time_ms": 10461.1,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 377,
+          "llm_total_tokens": 14357,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 12,
+          "action": "follow_lane",
+          "decision_time_ms": 4032.77,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4014.27,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 472,
+          "llm_total_tokens": 14452,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 13,
+          "action": "follow_lane",
+          "decision_time_ms": 3800.97,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3781.91,
+          "llm_prompt_tokens": 13986,
+          "llm_completion_tokens": 397,
+          "llm_total_tokens": 14383,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 14,
+          "action": "turn_right",
+          "decision_time_ms": 11082.22,
+          "llm_calls": 3,
+          "llm_response_time_ms": 11063.4,
+          "llm_prompt_tokens": 13579,
+          "llm_completion_tokens": 1541,
+          "llm_total_tokens": 15120,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 15,
+          "action": "follow_lane",
+          "decision_time_ms": 4677.23,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4635.06,
+          "llm_prompt_tokens": 13510,
+          "llm_completion_tokens": 571,
+          "llm_total_tokens": 14081,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 16,
+          "action": "go_straight",
+          "decision_time_ms": 2385.66,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2363.93,
+          "llm_prompt_tokens": 13601,
+          "llm_completion_tokens": 242,
+          "llm_total_tokens": 13843,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        }
+      ],
+      "action_sequence": [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      "error": null,
+      "log_file": "E:\\Master\\Autonomous AI\\agentic-driving\\Agentic_Ai_For_Autonomous_Driving\\logs\\benchmark\\s5_run1_20260712_141456.txt"
+    },
+    {
+      "scenario": "5",
+      "run_index": 2,
+      "success": true,
+      "collision_events": 0,
+      "total_contact_substeps": 0,
+      "first_collision_with": null,
+      "rule_violations": 0,
+      "decisions": [
+        {
+          "step": 1,
+          "action": "change_lane_left",
+          "decision_time_ms": 3974.17,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3952.32,
+          "llm_prompt_tokens": 14560,
+          "llm_completion_tokens": 472,
+          "llm_total_tokens": 15032,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_left"
+          ]
+        },
+        {
+          "step": 2,
+          "action": "yield",
+          "decision_time_ms": 5339.89,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5318.94,
+          "llm_prompt_tokens": 14420,
+          "llm_completion_tokens": 543,
+          "llm_total_tokens": 14963,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "yield"
+          ]
+        },
+        {
+          "step": 3,
+          "action": "stop",
+          "decision_time_ms": 4458.74,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4439.25,
+          "llm_prompt_tokens": 14412,
+          "llm_completion_tokens": 502,
+          "llm_total_tokens": 14914,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "stop"
+          ]
+        },
+        {
+          "step": 4,
+          "action": "go_straight",
+          "decision_time_ms": 3373.58,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3352.74,
+          "llm_prompt_tokens": 14289,
+          "llm_completion_tokens": 407,
+          "llm_total_tokens": 14696,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 5,
+          "action": "follow_lane",
+          "decision_time_ms": 6147.16,
+          "llm_calls": 3,
+          "llm_response_time_ms": 6128.54,
+          "llm_prompt_tokens": 14196,
+          "llm_completion_tokens": 750,
+          "llm_total_tokens": 14946,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 6,
+          "action": "follow_lane",
+          "decision_time_ms": 7479.1,
+          "llm_calls": 3,
+          "llm_response_time_ms": 7458.36,
+          "llm_prompt_tokens": 14176,
+          "llm_completion_tokens": 881,
+          "llm_total_tokens": 15057,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 7,
+          "action": "go_straight",
+          "decision_time_ms": 2574.63,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2551.2,
+          "llm_prompt_tokens": 15090,
+          "llm_completion_tokens": 294,
+          "llm_total_tokens": 15384,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 8,
+          "action": "follow_lane",
+          "decision_time_ms": 3780.57,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3760.17,
+          "llm_prompt_tokens": 14283,
+          "llm_completion_tokens": 443,
+          "llm_total_tokens": 14726,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 9,
+          "action": "change_lane_right",
+          "decision_time_ms": 4988.51,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4968.77,
+          "llm_prompt_tokens": 14371,
+          "llm_completion_tokens": 609,
+          "llm_total_tokens": 14980,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_right"
+          ]
+        },
+        {
+          "step": 10,
+          "action": "turn_right",
+          "decision_time_ms": 3456.0,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3433.03,
+          "llm_prompt_tokens": 14055,
+          "llm_completion_tokens": 377,
+          "llm_total_tokens": 14432,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 11,
+          "action": "follow_lane",
+          "decision_time_ms": 3812.23,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3791.4,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 436,
+          "llm_total_tokens": 14416,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 12,
+          "action": "follow_lane",
+          "decision_time_ms": 3574.37,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3554.27,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 433,
+          "llm_total_tokens": 14413,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 13,
+          "action": "follow_lane",
+          "decision_time_ms": 3769.42,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3750.4,
+          "llm_prompt_tokens": 13986,
+          "llm_completion_tokens": 427,
+          "llm_total_tokens": 14413,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 14,
+          "action": "turn_right",
+          "decision_time_ms": 9373.89,
+          "llm_calls": 3,
+          "llm_response_time_ms": 9353.73,
+          "llm_prompt_tokens": 13579,
+          "llm_completion_tokens": 1225,
+          "llm_total_tokens": 14804,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 15,
+          "action": "follow_lane",
+          "decision_time_ms": 4423.23,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4406.12,
+          "llm_prompt_tokens": 13510,
+          "llm_completion_tokens": 539,
+          "llm_total_tokens": 14049,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 16,
+          "action": "go_straight",
+          "decision_time_ms": 2453.42,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2432.57,
+          "llm_prompt_tokens": 13601,
+          "llm_completion_tokens": 263,
+          "llm_total_tokens": 13864,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        }
+      ],
+      "action_sequence": [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      "error": null,
+      "log_file": "E:\\Master\\Autonomous AI\\agentic-driving\\Agentic_Ai_For_Autonomous_Driving\\logs\\benchmark\\s5_run2_20260712_141635.txt"
+    },
+    {
+      "scenario": "5",
+      "run_index": 3,
+      "success": true,
+      "collision_events": 0,
+      "total_contact_substeps": 0,
+      "first_collision_with": null,
+      "rule_violations": 0,
+      "decisions": [
+        {
+          "step": 1,
+          "action": "change_lane_left",
+          "decision_time_ms": 3991.51,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3970.31,
+          "llm_prompt_tokens": 14560,
+          "llm_completion_tokens": 493,
+          "llm_total_tokens": 15053,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_left"
+          ]
+        },
+        {
+          "step": 2,
+          "action": "yield",
+          "decision_time_ms": 3701.38,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3681.92,
+          "llm_prompt_tokens": 14420,
+          "llm_completion_tokens": 439,
+          "llm_total_tokens": 14859,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "yield"
+          ]
+        },
+        {
+          "step": 3,
+          "action": "stop",
+          "decision_time_ms": 4252.6,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4231.29,
+          "llm_prompt_tokens": 14412,
+          "llm_completion_tokens": 515,
+          "llm_total_tokens": 14927,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "stop"
+          ]
+        },
+        {
+          "step": 4,
+          "action": "go_straight",
+          "decision_time_ms": 3109.56,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3088.95,
+          "llm_prompt_tokens": 14289,
+          "llm_completion_tokens": 352,
+          "llm_total_tokens": 14641,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 5,
+          "action": "follow_lane",
+          "decision_time_ms": 5014.38,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4995.42,
+          "llm_prompt_tokens": 14196,
+          "llm_completion_tokens": 638,
+          "llm_total_tokens": 14834,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 6,
+          "action": "follow_lane",
+          "decision_time_ms": 5404.36,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5384.7,
+          "llm_prompt_tokens": 14176,
+          "llm_completion_tokens": 693,
+          "llm_total_tokens": 14869,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 7,
+          "action": "go_straight",
+          "decision_time_ms": 3157.46,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3134.61,
+          "llm_prompt_tokens": 15090,
+          "llm_completion_tokens": 365,
+          "llm_total_tokens": 15455,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 8,
+          "action": "follow_lane",
+          "decision_time_ms": 5080.1,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5059.8,
+          "llm_prompt_tokens": 14283,
+          "llm_completion_tokens": 464,
+          "llm_total_tokens": 14747,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 9,
+          "action": "change_lane_right",
+          "decision_time_ms": 4802.45,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4783.42,
+          "llm_prompt_tokens": 14371,
+          "llm_completion_tokens": 578,
+          "llm_total_tokens": 14949,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_right"
+          ]
+        },
+        {
+          "step": 10,
+          "action": "turn_right",
+          "decision_time_ms": 2934.81,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2912.7,
+          "llm_prompt_tokens": 14055,
+          "llm_completion_tokens": 325,
+          "llm_total_tokens": 14380,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 11,
+          "action": "follow_lane",
+          "decision_time_ms": 3619.0,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3599.47,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 443,
+          "llm_total_tokens": 14423,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 12,
+          "action": "follow_lane",
+          "decision_time_ms": 3445.73,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3427.32,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 404,
+          "llm_total_tokens": 14384,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 13,
+          "action": "follow_lane",
+          "decision_time_ms": 3542.1,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3523.36,
+          "llm_prompt_tokens": 13986,
+          "llm_completion_tokens": 418,
+          "llm_total_tokens": 14404,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 14,
+          "action": "turn_right",
+          "decision_time_ms": 11141.72,
+          "llm_calls": 3,
+          "llm_response_time_ms": 11122.65,
+          "llm_prompt_tokens": 13579,
+          "llm_completion_tokens": 1565,
+          "llm_total_tokens": 15144,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 15,
+          "action": "follow_lane",
+          "decision_time_ms": 5016.49,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4999.38,
+          "llm_prompt_tokens": 13510,
+          "llm_completion_tokens": 590,
+          "llm_total_tokens": 14100,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 16,
+          "action": "go_straight",
+          "decision_time_ms": 2468.08,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2446.54,
+          "llm_prompt_tokens": 13601,
+          "llm_completion_tokens": 273,
+          "llm_total_tokens": 13874,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        }
+      ],
+      "action_sequence": [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      "error": null,
+      "log_file": "E:\\Master\\Autonomous AI\\agentic-driving\\Agentic_Ai_For_Autonomous_Driving\\logs\\benchmark\\s5_run3_20260712_141806.txt"
+    },
+    {
+      "scenario": "5",
+      "run_index": 4,
+      "success": true,
+      "collision_events": 0,
+      "total_contact_substeps": 0,
+      "first_collision_with": null,
+      "rule_violations": 0,
+      "decisions": [
+        {
+          "step": 1,
+          "action": "change_lane_left",
+          "decision_time_ms": 4363.84,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4341.9,
+          "llm_prompt_tokens": 14560,
+          "llm_completion_tokens": 539,
+          "llm_total_tokens": 15099,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_left"
+          ]
+        },
+        {
+          "step": 2,
+          "action": "yield",
+          "decision_time_ms": 5960.72,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5940.62,
+          "llm_prompt_tokens": 14420,
+          "llm_completion_tokens": 599,
+          "llm_total_tokens": 15019,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "yield"
+          ]
+        },
+        {
+          "step": 3,
+          "action": "stop",
+          "decision_time_ms": 3541.78,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3521.34,
+          "llm_prompt_tokens": 14412,
+          "llm_completion_tokens": 433,
+          "llm_total_tokens": 14845,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "stop"
+          ]
+        },
+        {
+          "step": 4,
+          "action": "go_straight",
+          "decision_time_ms": 2815.25,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2795.5,
+          "llm_prompt_tokens": 14289,
+          "llm_completion_tokens": 263,
+          "llm_total_tokens": 14552,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 5,
+          "action": "follow_lane",
+          "decision_time_ms": 4092.17,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4073.17,
+          "llm_prompt_tokens": 14196,
+          "llm_completion_tokens": 490,
+          "llm_total_tokens": 14686,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 6,
+          "action": "follow_lane",
+          "decision_time_ms": 4953.68,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4933.61,
+          "llm_prompt_tokens": 14176,
+          "llm_completion_tokens": 620,
+          "llm_total_tokens": 14796,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 7,
+          "action": "go_straight",
+          "decision_time_ms": 3612.87,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3590.63,
+          "llm_prompt_tokens": 15090,
+          "llm_completion_tokens": 301,
+          "llm_total_tokens": 15391,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 8,
+          "action": "follow_lane",
+          "decision_time_ms": 4562.74,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4490.74,
+          "llm_prompt_tokens": 14283,
+          "llm_completion_tokens": 496,
+          "llm_total_tokens": 14779,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 9,
+          "action": "change_lane_right",
+          "decision_time_ms": 4449.04,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4428.91,
+          "llm_prompt_tokens": 14371,
+          "llm_completion_tokens": 555,
+          "llm_total_tokens": 14926,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_right"
+          ]
+        },
+        {
+          "step": 10,
+          "action": "turn_right",
+          "decision_time_ms": 4097.76,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4075.25,
+          "llm_prompt_tokens": 14055,
+          "llm_completion_tokens": 428,
+          "llm_total_tokens": 14483,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 11,
+          "action": "follow_lane",
+          "decision_time_ms": 3838.61,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3818.87,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 412,
+          "llm_total_tokens": 14392,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 12,
+          "action": "follow_lane",
+          "decision_time_ms": 3973.41,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3956.32,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 420,
+          "llm_total_tokens": 14400,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 13,
+          "action": "follow_lane",
+          "decision_time_ms": 3848.27,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3828.93,
+          "llm_prompt_tokens": 13986,
+          "llm_completion_tokens": 464,
+          "llm_total_tokens": 14450,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 14,
+          "action": "turn_right",
+          "decision_time_ms": 7606.02,
+          "llm_calls": 3,
+          "llm_response_time_ms": 7588.48,
+          "llm_prompt_tokens": 13579,
+          "llm_completion_tokens": 887,
+          "llm_total_tokens": 14466,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 15,
+          "action": "follow_lane",
+          "decision_time_ms": 4595.21,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4577.55,
+          "llm_prompt_tokens": 13510,
+          "llm_completion_tokens": 517,
+          "llm_total_tokens": 14027,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 16,
+          "action": "go_straight",
+          "decision_time_ms": 3049.33,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2980.58,
+          "llm_prompt_tokens": 13601,
+          "llm_completion_tokens": 339,
+          "llm_total_tokens": 13940,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        }
+      ],
+      "action_sequence": [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      "error": null,
+      "log_file": "E:\\Master\\Autonomous AI\\agentic-driving\\Agentic_Ai_For_Autonomous_Driving\\logs\\benchmark\\s5_run4_20260712_141935.txt"
+    },
+    {
+      "scenario": "5",
+      "run_index": 5,
+      "success": true,
+      "collision_events": 0,
+      "total_contact_substeps": 0,
+      "first_collision_with": null,
+      "rule_violations": 0,
+      "decisions": [
+        {
+          "step": 1,
+          "action": "change_lane_left",
+          "decision_time_ms": 4387.64,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4365.28,
+          "llm_prompt_tokens": 14560,
+          "llm_completion_tokens": 492,
+          "llm_total_tokens": 15052,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_left"
+          ]
+        },
+        {
+          "step": 2,
+          "action": "yield",
+          "decision_time_ms": 3897.83,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3877.12,
+          "llm_prompt_tokens": 14420,
+          "llm_completion_tokens": 501,
+          "llm_total_tokens": 14921,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "yield"
+          ]
+        },
+        {
+          "step": 3,
+          "action": "stop",
+          "decision_time_ms": 4849.78,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4830.25,
+          "llm_prompt_tokens": 14412,
+          "llm_completion_tokens": 609,
+          "llm_total_tokens": 15021,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "stop"
+          ]
+        },
+        {
+          "step": 4,
+          "action": "go_straight",
+          "decision_time_ms": 2428.69,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2408.56,
+          "llm_prompt_tokens": 14289,
+          "llm_completion_tokens": 273,
+          "llm_total_tokens": 14562,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 5,
+          "action": "follow_lane",
+          "decision_time_ms": 6425.1,
+          "llm_calls": 3,
+          "llm_response_time_ms": 6405.76,
+          "llm_prompt_tokens": 14196,
+          "llm_completion_tokens": 789,
+          "llm_total_tokens": 14985,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 6,
+          "action": "follow_lane",
+          "decision_time_ms": 5938.19,
+          "llm_calls": 3,
+          "llm_response_time_ms": 5919.35,
+          "llm_prompt_tokens": 14176,
+          "llm_completion_tokens": 769,
+          "llm_total_tokens": 14945,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 7,
+          "action": "go_straight",
+          "decision_time_ms": 2825.89,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2803.06,
+          "llm_prompt_tokens": 15090,
+          "llm_completion_tokens": 257,
+          "llm_total_tokens": 15347,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        },
+        {
+          "step": 8,
+          "action": "follow_lane",
+          "decision_time_ms": 4385.87,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4329.56,
+          "llm_prompt_tokens": 14283,
+          "llm_completion_tokens": 499,
+          "llm_total_tokens": 14782,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 9,
+          "action": "change_lane_right",
+          "decision_time_ms": 4997.87,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4977.41,
+          "llm_prompt_tokens": 14371,
+          "llm_completion_tokens": 588,
+          "llm_total_tokens": 14959,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "change_lane_right"
+          ]
+        },
+        {
+          "step": 10,
+          "action": "turn_right",
+          "decision_time_ms": 2680.49,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2658.31,
+          "llm_prompt_tokens": 14055,
+          "llm_completion_tokens": 304,
+          "llm_total_tokens": 14359,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 11,
+          "action": "follow_lane",
+          "decision_time_ms": 3781.37,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3760.27,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 418,
+          "llm_total_tokens": 14398,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 12,
+          "action": "follow_lane",
+          "decision_time_ms": 3735.64,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3715.99,
+          "llm_prompt_tokens": 13980,
+          "llm_completion_tokens": 434,
+          "llm_total_tokens": 14414,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 13,
+          "action": "follow_lane",
+          "decision_time_ms": 3915.89,
+          "llm_calls": 3,
+          "llm_response_time_ms": 3896.29,
+          "llm_prompt_tokens": 13986,
+          "llm_completion_tokens": 437,
+          "llm_total_tokens": 14423,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 14,
+          "action": "turn_right",
+          "decision_time_ms": 13868.72,
+          "llm_calls": 4,
+          "llm_response_time_ms": 13845.86,
+          "llm_prompt_tokens": 18896,
+          "llm_completion_tokens": 1844,
+          "llm_total_tokens": 20740,
+          "mcp_tool_calls": 4,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "turn_right"
+          ]
+        },
+        {
+          "step": 15,
+          "action": "follow_lane",
+          "decision_time_ms": 4726.07,
+          "llm_calls": 3,
+          "llm_response_time_ms": 4708.09,
+          "llm_prompt_tokens": 13510,
+          "llm_completion_tokens": 601,
+          "llm_total_tokens": 14111,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "follow_lane"
+          ]
+        },
+        {
+          "step": 16,
+          "action": "go_straight",
+          "decision_time_ms": 2347.73,
+          "llm_calls": 3,
+          "llm_response_time_ms": 2326.33,
+          "llm_prompt_tokens": 13601,
+          "llm_completion_tokens": 245,
+          "llm_total_tokens": 13846,
+          "mcp_tool_calls": 3,
+          "action_acceptances": 1,
+          "action_rejections": 0,
+          "attempted_actions": [
+            "go_straight"
+          ]
+        }
+      ],
+      "action_sequence": [
+        "change_lane_left",
+        "yield",
+        "stop",
+        "go_straight",
+        "follow_lane",
+        "follow_lane",
+        "go_straight",
+        "follow_lane",
+        "change_lane_right",
+        "turn_right",
+        "follow_lane",
+        "follow_lane",
+        "follow_lane",
+        "turn_right",
+        "follow_lane",
+        "go_straight"
+      ],
+      "error": null,
+      "log_file": "E:\\Master\\Autonomous AI\\agentic-driving\\Agentic_Ai_For_Autonomous_Driving\\logs\\benchmark\\s5_run5_20260712_142102.txt"
+    }
+  ],
+  "errors": []
+}

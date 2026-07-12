@@ -26,8 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 class LLMClient:
-    def __init__(self, provider: str | None = None):
+    def __init__(self, provider: str | None = None, benchmark_collector=None):
         self.provider = resolve_provider(provider)
+        self._benchmark_collector = benchmark_collector
         self.client: OpenAI | None = None
         self._gemini_api_key: str | None = None
         self._gemini_base_url: str | None = None
@@ -111,7 +112,7 @@ class LLMClient:
 
     def _generate_gemini_response(
         self, messages, tools=None
-    ) -> GeminiChatMessage | None:
+    ) -> tuple[GeminiChatMessage | None, dict[str, int] | None]:
         system_instruction, contents = messages_to_gemini(messages)
         payload: dict = {
             "contents": contents,
@@ -136,7 +137,16 @@ class LLMClient:
         with httpx.Client(timeout=self._gemini_timeout) as http:
             response = http.post(url, headers=headers, json=payload)
             response.raise_for_status()
-            return parse_gemini_response(response.json())
+            data = response.json()
+            usage_meta = data.get("usageMetadata") or {}
+            usage = None
+            if usage_meta:
+                usage = {
+                    "prompt_tokens": usage_meta.get("promptTokenCount"),
+                    "completion_tokens": usage_meta.get("candidatesTokenCount"),
+                    "total_tokens": usage_meta.get("totalTokenCount"),
+                }
+            return parse_gemini_response(data), usage
 
     def generate_response(self, messages, tools=None):
         """Calls the LLM with the given messages and optional tools."""
@@ -154,8 +164,24 @@ class LLMClient:
                     tool_names or "none",
                 )
 
+                started = time.perf_counter()
+                prompt_tokens = None
+                completion_tokens = None
+                total_tokens = None
+                finish_reason = None
+                usage = None
+
                 if self.provider == "gemini":
-                    msg = self._generate_gemini_response(messages, tools=tools)
+                    msg, gemini_usage = self._generate_gemini_response(messages, tools=tools)
+                    if gemini_usage:
+                        prompt_tokens = gemini_usage.get("prompt_tokens")
+                        completion_tokens = gemini_usage.get("completion_tokens")
+                        total_tokens = gemini_usage.get("total_tokens")
+                        usage = (
+                            f"prompt={prompt_tokens} "
+                            f"completion={completion_tokens} "
+                            f"total={total_tokens}"
+                        )
                 else:
                     kwargs = {
                         "model": self.model,
@@ -168,20 +194,28 @@ class LLMClient:
 
                     response = self.client.chat.completions.create(**kwargs)
                     msg = response.choices[0].message
-
-                finish_reason = None
-                usage = None
-                if self.provider != "gemini":
                     try:
                         finish_reason = response.choices[0].finish_reason
                         if response.usage is not None:
+                            prompt_tokens = response.usage.prompt_tokens
+                            completion_tokens = response.usage.completion_tokens
+                            total_tokens = response.usage.total_tokens
                             usage = (
-                                f"prompt={response.usage.prompt_tokens} "
-                                f"completion={response.usage.completion_tokens} "
-                                f"total={response.usage.total_tokens}"
+                                f"prompt={prompt_tokens} "
+                                f"completion={completion_tokens} "
+                                f"total={total_tokens}"
                             )
                     except (AttributeError, IndexError):
                         pass
+
+                latency_ms = (time.perf_counter() - started) * 1000
+                if self._benchmark_collector is not None:
+                    self._benchmark_collector.record_llm_call(
+                        latency_ms,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                    )
 
                 if msg.tool_calls:
                     called = [tc.function.name for tc in msg.tool_calls]

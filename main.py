@@ -55,11 +55,6 @@ def main():
         help="Scenario number to run (1, 2, 3, 4, 5, 6, 7, or 8)",
     )
     parser.add_argument(
-        "--with-agent",
-        action="store_true",
-        help="Run the LLM agent for visual scenarios. Default: scenarios 2, 3, 6, 7, 8 are visual-only.",
-    )
-    parser.add_argument(
         "--log-level",
         type=str,
         default=os.getenv("LOG_LEVEL", "INFO"),
@@ -80,16 +75,13 @@ def main():
     llm_provider = os.getenv("LLM_PROVIDER", "groq")
     num_steps = NUM_STEPS
     step_ticks = ticks_per_step()
-    scenario_only = args.scenario in {"2", "3", "6", "7", "8"} and not args.with_agent
-
     log_stage(
         logger,
         "init",
-        "CARLA %s:%s scenario=%s mode=%s llm=%s steps=%d step=%ss ticks/step=%d sim_duration=%ss",
+        "CARLA %s:%s scenario=%s mode=agent llm=%s steps=%d step=%ss ticks/step=%d sim_duration=%ss",
         carla_host,
         carla_port,
         args.scenario,
-        "scenario-only" if scenario_only else "agent",
         llm_provider,
         num_steps,
         format_step_interval_s(),
@@ -100,7 +92,6 @@ def main():
     result = run_simulation(
         SimulationConfig(
             scenario=args.scenario,
-            with_agent=not scenario_only,
             log_level=args.log_level,
             log_file=log_path,
             carla_host=carla_host,

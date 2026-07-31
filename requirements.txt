@@ -12,3 +12,6 @@ ollama
 # Utilities
 pydantic
 python-dotenv
+
+# Development / testing (optional; install with pip install -r requirements-dev.txt)
+# pytest is listed in requirements-dev.txt

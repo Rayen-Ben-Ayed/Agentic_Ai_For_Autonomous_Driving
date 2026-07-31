@@ -13,7 +13,7 @@ _NO_JUNCTION_M = 80.0
 
 
 SCENARIO_MAPS = {
-    "6": "Town02",
+    "6": "Town10HD_Opt",
     "7": "Town04",
     "8": "Town05",
 }
@@ -60,6 +60,11 @@ def _find_blueprint(blueprint_library, names):
         except Exception:
             continue
     return list(blueprint_library.filter("vehicle.*"))[0]
+
+
+def _apply_vehicle_color(bp, rgb: tuple[int, int, int] | None) -> None:
+    if rgb and bp.has_attribute("color"):
+        bp.set_attribute("color", f"{rgb[0]},{rgb[1]},{rgb[2]}")
 
 
 def _lane_is_clear_midroad(waypoint, distance_m):
@@ -113,8 +118,13 @@ def select_midroad_spawn_point(world, variant="7"):
         )
         return None
 
-    # Use different valid segments for 7 and 8 so the demos do not look cloned.
-    pick_index = 0 if variant == "7" else min(len(candidates) - 1, len(candidates) // 2)
+    # Use different valid segments so similar scenarios do not look cloned.
+    if variant == "7":
+        pick_index = 0
+    elif variant == "8":
+        pick_index = min(len(candidates) - 1, len(candidates) // 2)
+    else:
+        pick_index = 0
     original_index, spawn_point = candidates[pick_index]
     logger.info(
         "Scenario %s selected mid-road ego spawn #%d from %s.",
@@ -170,6 +180,7 @@ class Scenario07BlockedLaneClearLeft(BaseScenario):
                 "vehicle.audi.tt",
             ],
         )
+        _apply_vehicle_color(bp, getattr(self, "blocker_color", None))
 
         for target_m in (self.obstacle_distance_m, 50.0, 45.0, 40.0):
             spawn_wp, actual_m = _waypoint_ahead_on_lane(ego_wp, target_m)
@@ -198,12 +209,6 @@ class Scenario07BlockedLaneClearLeft(BaseScenario):
             carla.VehicleControl(throttle=0.0, brake=1.0, hand_brake=True)
         )
 
-        self.world.debug.draw_string(
-            self.blocking_vehicle.get_location() + carla.Location(z=3.0),
-            "BLOCKED LANE - LEFT CLEAR",
-            color=carla.Color(255, 0, 0),
-            life_time=30.0,
-        )
         logger.info("=================================================")
         logger.info("SCENARIO 07: BLOCKED LANE, LEFT LANE CLEAR")
         logger.info("No-agent: ego drives into the stopped vehicle.")

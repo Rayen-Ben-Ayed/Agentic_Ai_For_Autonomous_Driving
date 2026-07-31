@@ -55,7 +55,6 @@ def run_benchmark_for_scenario(
     scenario: str,
     repeats: int,
     *,
-    with_agent: bool,
     log_level: str,
     output: str | None,
     pause_s: float,
@@ -84,7 +83,6 @@ def run_benchmark_for_scenario(
         result = run_simulation(
             SimulationConfig(
                 scenario=scenario,
-                with_agent=with_agent,
                 log_level=log_level,
                 log_file=str(log_file),
                 llm_provider=llm_provider,
@@ -139,11 +137,6 @@ def main() -> int:
         help="Number of times to run each selected scenario (default: 1)",
     )
     parser.add_argument(
-        "--with-agent",
-        action="store_true",
-        help="Force LLM agent mode (required for benchmark on scenarios 2,3,6,7,8)",
-    )
-    parser.add_argument(
         "--log-level",
         type=str,
         default=os.getenv("LOG_LEVEL", "INFO"),
@@ -177,8 +170,6 @@ def main() -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    with_agent = True
-
     exit_code = 0
     for scenario in scenarios:
         scenario_output = args.output
@@ -191,7 +182,6 @@ def main() -> int:
             run_benchmark_for_scenario(
                 scenario,
                 args.repeats,
-                with_agent=with_agent,
                 log_level=args.log_level,
                 output=scenario_output,
                 pause_s=args.pause_between_runs,

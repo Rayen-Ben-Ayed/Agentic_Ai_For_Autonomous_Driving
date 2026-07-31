@@ -1,6 +1,7 @@
 # Environments & secrets
 .env
 .env.*
+!.env.example
 
 .venv/
 venv/
@@ -36,7 +37,10 @@ evaluation_results.json
 
 # Run logs
 logs/
+runs/
 *.log
+*.telemetry.jsonl
+*.evaluation.json
 
 # OS
 .DS_Store

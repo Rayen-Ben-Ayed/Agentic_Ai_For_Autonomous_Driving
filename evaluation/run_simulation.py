@@ -35,7 +35,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 @dataclass
 class SimulationConfig:
     scenario: str
-    with_agent: bool = True
     log_level: str = "INFO"
     log_file: Optional[str] = None
     carla_host: Optional[str] = None
@@ -96,6 +95,10 @@ def load_scenario(scenario_id: str, carla_client):
 
 
 def _follow_spectator(carla_client) -> None:
+    # Moving the spectator every step while sync mode freezes the world during
+    # LLM calls is a common trigger for CARLA's D3D11 occlusion-query crash.
+    if not CarlaClient.follow_spectator_enabled():
+        return
     if not carla_client.get_ego_vehicle():
         return
     import carla
@@ -130,16 +133,11 @@ def run_simulation(config: SimulationConfig) -> RunBenchmarkResult:
     llm_provider = config.llm_provider or os.getenv("LLM_PROVIDER", "groq")
     num_steps = NUM_STEPS
     step_ticks = ticks_per_step()
-    scenario_only = config.scenario in {"2", "3", "6", "7", "8"} and not config.with_agent
 
     if config.log_file:
         telemetry_path = telemetry.init(config.log_file)
         if telemetry_path:
             logger.info("Per-tick telemetry -> %s", telemetry_path)
-
-    if scenario_only and collector is not None:
-        result.error = "Benchmark requires agent mode; use --with-agent for this scenario."
-        return result
 
     carla_client = CarlaClient(host=carla_host, port=carla_port)
     evaluator: Optional[Evaluator] = None
@@ -155,7 +153,8 @@ def run_simulation(config: SimulationConfig) -> RunBenchmarkResult:
             )
 
             target_map = SCENARIO_MAPS.get(config.scenario)
-            if target_map and target_map not in carla_client.get_world().get_map().name:
+            current_map = carla_client.get_world().get_map().name
+            if target_map and target_map not in current_map:
                 logger.info(
                     "Scenario %s loading %s for a cleaner mid-road setup.",
                     config.scenario,
@@ -169,6 +168,14 @@ def run_simulation(config: SimulationConfig) -> RunBenchmarkResult:
                 )
 
                 scenario_spawn_point = select_right_lane_pullout_spawn_point(
+                    carla_client.get_world()
+                )
+            elif config.scenario == "8":
+                from simulation.scenarios.scenario_08_blocked_lane_unsafe_left import (
+                    select_three_lane_rightmost_spawn,
+                )
+
+                scenario_spawn_point = select_three_lane_rightmost_spawn(
                     carla_client.get_world()
                 )
             else:
@@ -191,9 +198,6 @@ def run_simulation(config: SimulationConfig) -> RunBenchmarkResult:
             result.error = f"Scenario {config.scenario} is not implemented."
             return result
 
-        if hasattr(scenario, "control_ego"):
-            scenario.control_ego = scenario_only
-
         scenario.setup()
         carla_client.tick()
         if not [actor for actor in scenario.npc_actors if actor.is_alive]:
@@ -207,33 +211,23 @@ def run_simulation(config: SimulationConfig) -> RunBenchmarkResult:
             [actor.id for actor in scenario.npc_actors if actor.is_alive]
         )
 
-        decision_maker = None
-        if not scenario_only:
-            init_mcp_server(carla_client, world_state, action_executor)
-            llm_client = LLMClient(
-                provider=llm_provider,
-                benchmark_collector=collector,
-            )
-            mcp_client = MCPDrivingClient(
-                verbose_state=config.log_level.upper() == "DEBUG",
-                benchmark_collector=collector,
-            )
-            decision_maker = DecisionMaker(
-                llm_client,
-                mcp_client,
-                benchmark_collector=collector,
-            )
+        init_mcp_server(carla_client, world_state, action_executor)
+        llm_client = LLMClient(
+            provider=llm_provider,
+            benchmark_collector=collector,
+        )
+        mcp_client = MCPDrivingClient(
+            verbose_state=config.log_level.upper() == "DEBUG",
+            benchmark_collector=collector,
+        )
+        decision_maker = DecisionMaker(
+            llm_client,
+            mcp_client,
+            benchmark_collector=collector,
+        )
 
         for step in range(num_steps):
             logger.info("%s ========== step %d/%d ==========", PIPELINE, step + 1, num_steps)
-
-            if scenario_only:
-                for tick_idx in range(step_ticks):
-                    if hasattr(scenario, "update"):
-                        scenario.update((step * step_ticks) + tick_idx)
-                    carla_client.tick()
-                    _follow_spectator(carla_client)
-                continue
 
             if hasattr(scenario, "update"):
                 scenario.update(step)

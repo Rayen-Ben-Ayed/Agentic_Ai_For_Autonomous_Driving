@@ -1,36 +1,196 @@
-# Agentic Driving
+# eAgentic AI for Autonomous Driving
 
-A modular Python architecture integrating CARLA, an MCP server, an LLM-based decision agent, and an evaluation pipeline.
+An LLM-driven driving agent for the [CARLA](https://carla.org/) simulator. The system couples a synchronous CARLA world, an MCP (Model Context Protocol) tool bridge, runtime safety guards, and a benchmark harness for repeatable evaluation across eight scripted scenarios.
 
-## Project Structure
+## Architecture
 
 ```text
-agentic-driving/
-├── simulation/                 # 1. CARLA Simulation Scripts
-│   ├── scenarios/              # Scenario definitions (basic, interaction, edge cases)
-│   ├── carla_client.py         # Connection and interaction with the CARLA server
-│   ├── world_state.py          # Extracts state (ego speed, actors, obstacles) without heavy sensors
-│   └── action_executor.py      # Translates discrete actions into CARLA vehicle controls
-├── mcp_interface/              # 2. Model Context Protocol Bridge
-│   ├── server.py               # MCP server exposing simulation state and actions
-│   └── tools.py                # Defined MCP tools (e.g., get_world_state, execute_action)
-├── agent/                      # 3. Agentic AI Integration
-│   ├── llm_client.py           # API integration for Groq, Cerebras, Ollama, and remote Ollama
-│   ├── prompt_templates.py     # Prompts for scenario decision making
-│   └── decision_maker.py       # Logic to query LLM and parse the chosen action
-├── evaluation/                 # 4. Evaluation Module
-│   ├── metrics.py              # Calculates collision rate, latency, rule compliance, etc.
-│   └── evaluator.py            # Runs scenarios, monitors rules, and logs outcomes
-├── main.py                     # Entry point to orchestrate the pipeline
-└── README.md                   # Project documentation
+┌─────────────┐     MCP tools      ┌──────────────────┐     vehicle controls
+│  LLM Agent  │ ◄───────────────► │  MCP Server      │ ◄──────────────────► CARLA
+│ (Groq, etc.)│  get_world_state  │  + maneuver      │
+│             │  execute_action   │    policy gates  │
+└─────────────┘                   └──────────────────┘
+        ▲                                   ▲
+        │                                   │
+   decision_maker.py                  action_executor.py
+                                      world_state.py
 ```
 
-## Execution Steps
+Each simulation step:
 
-1. **Start CARLA**: Run the CARLA simulator executable (`CarlaUE4.exe` or `./CarlaUE4.exe -dx11 -quality-level=Low -ResX=800 -ResY=600 -windowed`).
-2. **Configure Environment**: Create a `.env` file in the project root and add your API keys (e.g., `GROQ_API_KEY=your_key`). Set `LLM_PROVIDER` to one of `groq`, `cerebras`, `ollama` (local), or `ollama-remote` (network Ollama host). For remote Ollama, defaults target `http://10.230.225.149:11434/v1` with model `llama3.1:8b`; override with `OLLAMA_REMOTE_BASE_URL` and `OLLAMA_REMOTE_MODEL` if needed.
-3. **Install Dependencies**: `pip install -r requirements.txt`
-4. **Run a Scenario**: Execute the main script with the desired scenario number:
-   ```bash
-   python Agentic_Ai_For_Autonomous_Driving/main.py --scenario 1 
-   ```
+1. The agent reads structured world state via MCP (`get_world_state`).
+2. The LLM chooses a discrete action and calls `execute_action`.
+3. Runtime guards filter infeasible or unsafe actions before execution.
+4. The action executor applies low-level controls for the configured step interval.
+5. CARLA advances in synchronous mode (fixed physics delta per tick).
+
+## Requirements
+
+- **Python** 3.10+ (MCP package requires 3.10+)
+- **CARLA** 0.9.x simulator (tested with synchronous mode on Town03–Town10 maps)
+- An API key for at least one supported LLM provider (see [Configuration](#configuration))
+
+## Quick start
+
+### 1. Start CARLA
+
+Launch the CARLA server before running any scenario, for example:
+
+```bash
+CarlaUE4.exe -quality-level=Low -ResX=800 -ResY=600 -windowed
+```
+
+### 2. Install dependencies
+
+```bash
+cd Agentic_Ai_For_Autonomous_Driving
+pip install -r requirements.txt
+```
+
+For development and tests:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+> **Note:** The `carla` Python package must match your CARLA simulator build. Install it from the CARLA distribution's `PythonAPI/carla/dist/` wheel if `pip install carla` does not match your version.
+
+### 3. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set at least:
+
+- `LLM_PROVIDER` — one of `groq`, `cerebras`, `ollama`, `ollama-remote`, `academic_cloud`
+- The matching API key (e.g. `GROQ_API_KEY`)
+
+All timing, perception, and control thresholds are documented in `.env.example`.
+
+### 4. Run a scenario
+
+```bash
+python main.py --scenario 1
+```
+
+Optional flags:
+
+```bash
+python main.py --scenario 3 --log-level DEBUG --log-file logs/my_run.txt
+```
+
+Logs are written to `logs/run_<timestamp>.txt` by default. When telemetry is enabled, a companion `.telemetry.jsonl` file is created next to the log.
+
+## Scenarios
+
+
+| ID  | Name                       | Map          | Description                                        |
+| --- | -------------------------- | ------------ | -------------------------------------------------- |
+| 1   | Emergency braking          | Town03       | Stopped vehicle ahead on the ego lane              |
+| 2   | Crossing vehicle           | Town03       | Vehicle crosses the ego path from the side         |
+| 3   | Pedestrian crossing        | Town03       | Pedestrian crosses ahead at a trigger distance     |
+| 4   | Multi-car braking          | Town10HD_Opt | Slow lead vehicle with surrounding traffic         |
+| 5   | Multi-car + pedestrian     | Town10HD_Opt | Scenario 4 plus a crossing pedestrian              |
+| 6   | Right-lane pullout         | Town10HD_Opt | Left-lane vehicle merges into ego lane             |
+| 7   | Blocked lane (safe left)   | Town04       | Stopped vehicle ahead; left lane is clear          |
+| 8   | Blocked lane (unsafe left) | Town05       | Right and middle lanes blocked; left lane occupied |
+
+
+Scenarios 6–8 load dedicated maps and custom spawn points automatically.
+
+## Action space
+
+The agent selects from eight discrete actions:
+
+`follow_lane`, `stop`, `yield`, `change_lane_left`, `change_lane_right`, `go_straight`, `turn_left`, `turn_right`
+
+Before execution, the maneuver policy computes `allowed_actions` from simulator ground truth (obstacles, lane geometry, pedestrian conflicts, junction context). The MCP server rejects actions outside that set.
+
+## Benchmarking
+
+Run repeatable multi-run evaluations with aggregated metrics:
+
+```bash
+# Single scenario, 5 repeats
+python benchmark.py --scenario 1 --repeats 5
+
+# Multiple scenarios
+python benchmark.py --scenario 3,7,8 --repeats 5
+
+# All scenarios
+python benchmark.py --scenario all --repeats 3
+```
+
+Reports are saved as JSON under `benchmark_results/` (collision rate, decision latency, token usage, action acceptance, cross-run determinism). Example reports from the evaluation campaign are included:
+
+- `benchmark_results/benchmark_scenario_01_run_01.json` … `benchmark_scenario_08_run_01.json`
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -q
+```
+
+Unit tests cover maneuver policy, lane controllers, timing configuration, MCP agent logic, and benchmark aggregation. CARLA is not required for the test suite.
+
+## Project structure
+
+```text
+Agentic_Ai_For_Autonomous_Driving/
+├── agent/                  # LLM client, prompts, decision loop
+│   ├── llm_client.py
+│   ├── llm_config.py
+│   ├── decision_maker.py
+│   └── prompt_templates.py
+├── mcp_interface/          # MCP server and client bridge
+│   ├── server.py
+│   └── client.py
+├── simulation/             # CARLA integration
+│   ├── carla_client.py
+│   ├── world_state.py
+│   ├── action_executor.py
+│   ├── maneuver_policy.py
+│   ├── timing_config.py
+│   └── scenarios/          # Scenario 1–8 definitions
+├── evaluation/             # Metrics, evaluator, benchmark harness
+│   ├── run_simulation.py
+│   ├── benchmark_runner.py
+│   └── evaluator.py
+├── tests/                  # Unit tests
+├── benchmark_results/      # Saved benchmark JSON reports
+├── main.py                 # Single-scenario entry point
+├── benchmark.py            # Multi-run benchmark entry point
+├── .env.example            # Configuration template (copy to .env)
+└── requirements.txt
+```
+
+## Configuration reference
+
+Key environment variables (full list in `.env.example`):
+
+
+| Variable              | Default | Purpose                                     |
+| --------------------- | ------- | ------------------------------------------- |
+| `LLM_PROVIDER`        | `groq`  | LLM backend                                 |
+| `STEP_INTERVAL_S`     | `4.0`   | Simulated seconds per agent decision        |
+| `NUM_STEPS`           | `16`    | Agent decisions per scenario run            |
+| `CARLA_FIXED_DELTA_S` | `0.05`  | Physics sub-step in synchronous mode        |
+| `TELEMETRY_ENABLED`   | `1`     | Per-tick JSONL telemetry alongside run logs |
+
+
+Timing values consumed by prompts and maneuver planning are centralized in `simulation/timing_config.py`.
+
+## Supported LLM providers
+
+
+| Provider        | Env key             | Notes                                                   |
+| --------------- | ------------------- | ------------------------------------------------------- |
+| Groq            | `GROQ_API_KEY`      | OpenAI-compatible API                                   |
+| Cerebras        | `CEREBRAS_API_KEY`  | OpenAI-compatible API                                   |
+| Ollama (local)  | —                   | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
+| Ollama (remote) | —                   | `OLLAMA_REMOTE_BASE_URL`                                |
+| Academic Cloud      | `ACADEMIC_CLOUD_API_KEY` |  endpoint                                   |
+
+

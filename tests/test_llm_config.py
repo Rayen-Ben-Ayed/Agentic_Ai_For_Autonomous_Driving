@@ -5,12 +5,13 @@ import pytest
 
 @pytest.fixture()
 def clean_llm_env(monkeypatch):
+    # Prevent reload from re-reading the developer's local .env file.
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: None)
     for key in (
         "LLM_MODEL",
         "LLM_PROVIDER",
         "GROQ_MODEL",
         "CEREBRAS_MODEL",
-        "GEMINI_MODEL",
         "OLLAMA_MODEL",
         "OLLAMA_REMOTE_MODEL",
     ):
@@ -41,6 +42,5 @@ def test_global_llm_model_overrides_provider(clean_llm_env, monkeypatch):
 def test_cerebras_and_ollama_defaults(clean_llm_env):
     lc = _reload()
     assert lc.resolve_model("cerebras") == "llama3.1-8b"
-    assert lc.resolve_model("gemini") == "gemini-flash-latest"
     assert lc.resolve_model("ollama") == "llama3"
     assert lc.resolve_model("ollama-remote") == "llama3.1:8b"

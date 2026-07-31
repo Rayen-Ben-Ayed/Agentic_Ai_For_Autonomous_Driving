@@ -1,7 +1,25 @@
-import carla
 import logging
+import os
+
+import carla
 
 logger = logging.getLogger(__name__)
+
+# UE4 D3D11 occlusion queries often assert (DXGI_ERROR_INVALID_CALL) when the
+# CARLA window keeps rendering while synchronous mode freezes the world during
+# long LLM pauses. no_rendering_mode bypasses that path entirely.
+_NO_RENDERING = os.getenv("CARLA_NO_RENDERING", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+_FOLLOW_SPECTATOR = os.getenv("CARLA_FOLLOW_SPECTATOR", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 # A good ego spawn has a long straight drivable lane ahead so scenarios can
 # place obstacles directly in front of it.
@@ -109,10 +127,14 @@ class CarlaClient:
         settings = self.world.get_settings()
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = fixed_delta_seconds
+        # Avoid UE render-thread occlusion crashes during LLM pauses.
+        settings.no_rendering_mode = _NO_RENDERING
         self.world.apply_settings(settings)
         self._synchronous = True
         logger.info(
-            "CARLA synchronous mode ON (fixed_delta_seconds=%.3f)", fixed_delta_seconds
+            "CARLA synchronous mode ON (fixed_delta_seconds=%.3f, no_rendering=%s)",
+            fixed_delta_seconds,
+            _NO_RENDERING,
         )
 
     def tick(self):
@@ -174,14 +196,19 @@ class CarlaClient:
 
         logger.info("Ego vehicle spawned at %s", spawn_point.location)
 
-        spectator = self.world.get_spectator()
-        transform = carla.Transform(
-            self.ego_vehicle.get_transform().location + carla.Location(z=50),
-            carla.Rotation(pitch=-90),
-        )
-        spectator.set_transform(transform)
+        if _FOLLOW_SPECTATOR and not _NO_RENDERING:
+            spectator = self.world.get_spectator()
+            transform = carla.Transform(
+                self.ego_vehicle.get_transform().location + carla.Location(z=50),
+                carla.Rotation(pitch=-90),
+            )
+            spectator.set_transform(transform)
 
         return self.ego_vehicle
+
+    @staticmethod
+    def follow_spectator_enabled() -> bool:
+        return _FOLLOW_SPECTATOR and not _NO_RENDERING
 
     def cleanup(self):
         if self.ego_vehicle:

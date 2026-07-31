@@ -126,7 +126,7 @@ def aggregate_runs(
             ),
             "note": (
                 "Token counts are reported when the provider returns usage metadata "
-                "(Groq/Cerebras/OpenAI-compatible). Ollama/Gemini may report 0."
+                "(Groq/Cerebras/OpenAI-compatible). Ollama may report 0."
             ),
         },
         "actions": {

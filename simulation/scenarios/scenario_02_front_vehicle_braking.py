@@ -72,9 +72,8 @@ class Scenario02FrontVehicleBraking(BaseScenario):
 
         logger.info("=================================================")
         logger.info("SCENARIO 02: LEFT VEHICLE INTERSECTION DANGER")
-        logger.info("Ego drives forward in scenario-only mode.")
+        logger.info("Ego is controlled by the LLM agent.")
         logger.info("NPC waits on the left, then crosses into the ego path.")
-        logger.info("This run is for visual scenario timing, not LLM behavior.")
         logger.info("Ego scenario throttle: %.2f", self.ego_throttle)
         logger.info(
             "NPC trigger distance: %.1f m",
@@ -84,27 +83,6 @@ class Scenario02FrontVehicleBraking(BaseScenario):
         logger.info("Conflict location: %s", self.collision_location)
         logger.info("NPC start location: %s", self.cross_start_location)
         logger.info("=================================================")
-
-        self.world.debug.draw_string(
-            self.collision_location + carla.Location(z=3.0),
-            "DANGER / COLLISION POINT",
-            color=carla.Color(255, 0, 0),
-            life_time=30.0
-        )
-
-        self.world.debug.draw_string(
-            self.cross_start_location + carla.Location(z=3.0),
-            "NPC START LEFT",
-            color=carla.Color(255, 128, 0),
-            life_time=30.0
-        )
-
-        self.world.debug.draw_point(
-            self.collision_location,
-            size=0.25,
-            color=carla.Color(255, 0, 0),
-            life_time=30.0
-        )
 
     def update(self, step=None, *, allow_trigger=True):
         if step is None:
